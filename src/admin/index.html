@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETClaw Admin</title>
+<style>
+/* ---- Reset & Base ---- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+a { color: #4ea8de; text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre, .mono { font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace; }
+
+/* ---- Layout ---- */
+#app { display: flex; flex-direction: column; min-height: 100vh; }
+
+header {
+  background: #16213e;
+  border-bottom: 2px solid #0f3460;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+header h1 { font-size: 1.25rem; font-weight: 600; color: #e94560; letter-spacing: 0.5px; }
+header .subtitle { font-size: 0.85rem; color: #888; margin-left: 0.75rem; }
+
+nav {
+  display: flex;
+  gap: 0;
+  background: #16213e;
+  border-bottom: 1px solid #0f3460;
+  padding: 0 1.5rem;
+  overflow-x: auto;
+}
+nav button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #888;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+nav button:hover { color: #ccc; }
+nav button.active { color: #e94560; border-bottom-color: #e94560; }
+
+main { flex: 1; padding: 1.5rem; max-width: 1200px; width: 100%; margin: 0 auto; }
+
+/* ---- Cards ---- */
+.card {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+.card h2 { font-size: 1.1rem; margin-bottom: 0.75rem; color: #e94560; }
+.card h3 { font-size: 0.95rem; margin-bottom: 0.5rem; color: #ccc; }
+
+/* ---- Tables ---- */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #0f3460; }
+th { color: #888; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+td { font-size: 0.9rem; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(15, 52, 96, 0.3); }
+
+/* ---- Badges ---- */
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.badge-running { background: #064e3b; color: #6ee7b7; }
+.badge-starting { background: #78350f; color: #fbbf24; }
+.badge-crashed { background: #7f1d1d; color: #fca5a5; }
+.badge-stopped { background: #374151; color: #9ca3af; }
+.badge-channel { background: #1e3a5f; color: #93c5fd; }
+.badge-provider { background: #3b1f5f; color: #c4b5fd; }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #0f3460;
+  border-radius: 5px;
+  background: #0f3460;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover { background: #1a4a80; border-color: #1a4a80; }
+.btn-danger { background: #7f1d1d; border-color: #991b1b; }
+.btn-danger:hover { background: #991b1b; }
+.btn-success { background: #064e3b; border-color: #065f46; }
+.btn-success:hover { background: #065f46; }
+.btn-primary { background: #e94560; border-color: #e94560; color: #fff; }
+.btn-primary:hover { background: #d63851; }
+.btn-sm { padding: 0.2rem 0.5rem; font-size: 0.75rem; }
+.btn-group { display: flex; gap: 0.35rem; }
+
+/* ---- Forms ---- */
+input, select, textarea {
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 5px;
+  color: #e0e0e0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #e94560;
+}
+textarea { resize: vertical; min-height: 3rem; font-family: 'Cascadia Code', 'Fira Code', monospace; }
+label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; }
+.form-row { margin-bottom: 0.75rem; }
+.form-row-inline { display: flex; gap: 0.75rem; align-items: end; }
+.form-row-inline .form-row { flex: 1; margin-bottom: 0; }
+
+/* ---- Stats ---- */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.stat-card {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+.stat-card .value { font-size: 2rem; font-weight: 700; color: #e94560; }
+.stat-card .label { font-size: 0.8rem; color: #888; margin-top: 0.25rem; }
+
+/* ---- Toast ---- */
+#toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.toast {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  animation: slideIn 0.2s ease-out;
+  max-width: 350px;
+}
+.toast-success { border-left: 3px solid #6ee7b7; }
+.toast-error { border-left: 3px solid #fca5a5; }
+.toast-info { border-left: 3px solid #93c5fd; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* ---- Login ---- */
+#login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #1a1a2e;
+}
+.login-box {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 10px;
+  padding: 2rem;
+  width: 340px;
+  text-align: center;
+}
+.login-box h1 { color: #e94560; margin-bottom: 0.5rem; font-size: 1.5rem; }
+.login-box p { color: #888; margin-bottom: 1.5rem; font-size: 0.85rem; }
+.login-box input { margin-bottom: 1rem; text-align: center; }
+.login-box .btn { width: 100%; justify-content: center; }
+.login-error { color: #fca5a5; font-size: 0.8rem; margin-bottom: 0.75rem; }
+
+/* ---- Modal ---- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+.modal {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 10px;
+  padding: 1.5rem;
+  min-width: 380px;
+  max-width: 550px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal h2 { margin-bottom: 1rem; color: #e94560; font-size: 1.1rem; }
+.modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+
+/* ---- KV Editor ---- */
+.kv-editor .kv-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  align-items: center;
+}
+.kv-editor .kv-row input { width: auto; }
+.kv-editor .kv-key { flex: 1; }
+.kv-editor .kv-val { flex: 2; }
+.kv-editor .kv-remove { flex: 0 0 auto; }
+
+/* ---- Section/page ---- */
+.page { display: none; }
+.page.active { display: block; }
+
+/* ---- Responsive ---- */
+@media (max-width: 640px) {
+  main { padding: 0.75rem; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .form-row-inline { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN PAGE -->
+<div id="login-page" style="display:none">
+  <div class="login-box">
+    <h1>ETClaw</h1>
+    <p>Admin Panel</p>
+    <div id="login-error" class="login-error" style="display:none"></div>
+    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+    <button class="btn btn-primary" onclick="doLogin()">Log In</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <header>
+    <div style="display:flex;align-items:center">
+      <h1>ETClaw</h1>
+      <span class="subtitle">Admin Panel</span>
+    </div>
+    <span id="uptime-badge" class="mono" style="font-size:0.8rem;color:#888"></span>
+  </header>
+
+  <nav>
+    <button class="active" data-page="dashboard">Dashboard</button>
+    <button data-page="workers">Workers</button>
+    <button data-page="sessions">Sessions</button>
+    <button data-page="access">Access</button>
+    <button data-page="environment">Environment</button>
+    <button data-page="cron">Cron</button>
+  </nav>
+
+  <main>
+    <!-- ============ DASHBOARD ============ -->
+    <div id="page-dashboard" class="page active">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="value" id="stat-uptime">--</div><div class="label">Uptime</div></div>
+        <div class="stat-card"><div class="value" id="stat-workers">--</div><div class="label">Workers</div></div>
+        <div class="stat-card"><div class="value" id="stat-sessions">--</div><div class="label">Sessions</div></div>
+      </div>
+      <div class="card">
+        <h2>Running Workers</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>PID</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="dash-workers"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ WORKERS ============ -->
+    <div id="page-workers" class="page">
+      <div class="card">
+        <h2>Active Workers</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>PID</th><th>Status</th><th>Restarts</th><th>Actions</th></tr></thead>
+          <tbody id="workers-table"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>Available Manifests</h2>
+        <p style="color:#888;font-size:0.85rem;margin-bottom:0.75rem">Worker templates that can be spawned</p>
+        <div id="manifests-list"></div>
+      </div>
+      <div class="card">
+        <h2>Spawn Custom Worker</h2>
+        <div class="form-row-inline">
+          <div class="form-row"><label>Name</label><input id="spawn-name" placeholder="my-worker"></div>
+          <div class="form-row"><label>Type</label>
+            <select id="spawn-type"><option value="channel">channel</option><option value="provider">provider</option></select>
+          </div>
+          <div class="form-row"><label>Worker Path</label><input id="spawn-path" placeholder="src/channels/my-worker.ts"></div>
+          <div class="form-row" style="flex:0 0 auto"><label>&nbsp;</label><button class="btn btn-primary" onclick="spawnCustomWorker()">Spawn</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SESSIONS ============ -->
+    <div id="page-sessions" class="page">
+      <div class="card">
+        <h2>Sessions</h2>
+        <table>
+          <thead><tr><th>Key</th><th>Name</th><th>Provider</th><th>CWD</th><th>Session ID</th><th>Actions</th></tr></thead>
+          <tbody id="sessions-table"></tbody>
+        </table>
+        <div id="sessions-empty" style="color:#888;text-align:center;padding:1.5rem;display:none">No sessions yet</div>
+      </div>
+    </div>
+
+    <!-- ============ ACCESS ============ -->
+    <div id="page-access" class="page">
+      <div class="card">
+        <h2>DM Policy</h2>
+        <div class="form-row">
+          <label>Policy</label>
+          <select id="access-dm-policy" onchange="updateAccessPolicy()">
+            <option value="pairing">Pairing (require code exchange)</option>
+            <option value="allowlist">Allowlist (only listed users)</option>
+            <option value="disabled">Disabled (no DMs)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Allowlist</h2>
+        <div id="allowlist-items"></div>
+        <div class="form-row-inline" style="margin-top:0.75rem">
+          <div class="form-row"><input id="allowlist-new" placeholder="User ID"></div>
+          <div class="form-row" style="flex:0 0 auto"><button class="btn btn-success" onclick="addAllowlistEntry()">Add</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Pending Pairings</h2>
+        <table>
+          <thead><tr><th>Code</th><th>Sender ID</th><th>Chat ID</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="pending-table"></tbody>
+        </table>
+        <div id="pending-empty" style="color:#888;text-align:center;padding:1rem;display:none">No pending pairings</div>
+      </div>
+
+      <div class="card">
+        <h2>Groups</h2>
+        <div id="groups-list"></div>
+        <div id="groups-empty" style="color:#888;text-align:center;padding:1rem;display:none">No groups configured</div>
+      </div>
+    </div>
+
+    <!-- ============ ENVIRONMENT ============ -->
+    <div id="page-environment" class="page">
+      <div class="card">
+        <h2>Global Environment</h2>
+        <p style="color:#888;font-size:0.85rem;margin-bottom:0.75rem">These env vars are passed to ALL workers. Restart workers after changes.</p>
+        <div id="global-env-editor" class="kv-editor"></div>
+        <div style="margin-top:0.75rem;display:flex;gap:0.5rem">
+          <button class="btn" onclick="addGlobalEnvRow()">+ Add Variable</button>
+          <button class="btn btn-primary" onclick="saveGlobalEnv()">Save</button>
+        </div>
+      </div>
+      <div id="worker-env-cards"></div>
+    </div>
+
+    <!-- ============ CRON ============ -->
+    <div id="page-cron" class="page">
+      <div class="card">
+        <h2>Cron Jobs</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Schedule</th><th>Provider</th><th>Prompt</th><th>Actions</th></tr></thead>
+          <tbody id="cron-table"></tbody>
+        </table>
+        <div id="cron-empty" style="color:#888;text-align:center;padding:1.5rem;display:none">No cron jobs</div>
+      </div>
+      <div class="card">
+        <h2>Add Cron Job</h2>
+        <div class="form-row-inline">
+          <div class="form-row"><label>Name</label><input id="cron-name" placeholder="daily-check"></div>
+          <div class="form-row"><label>Schedule (cron)</label><input id="cron-schedule" placeholder="0 9 * * *"></div>
+          <div class="form-row"><label>Provider</label><input id="cron-provider" placeholder="claude" value="claude"></div>
+        </div>
+        <div class="form-row" style="margin-top:0.75rem">
+          <label>Prompt</label>
+          <textarea id="cron-prompt" rows="3" placeholder="What should this job do?"></textarea>
+        </div>
+        <button class="btn btn-primary" style="margin-top:0.5rem" onclick="addCronJob()">Add Job</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL (reused) -->
+<div id="modal-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<!-- TOASTS -->
+<div id="toast-container"></div>
+
+<script>
+// ---- State ----
+let refreshTimer = null;
+
+// ---- API helpers ----
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+function post(path, body) {
+  return api(path, { method: 'POST', body: JSON.stringify(body) });
+}
+
+// ---- Toast ----
+
+function toast(message, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = message;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ---- Auth ----
+
+async function checkAuth() {
+  const data = await api('/api/auth/check');
+  if (data.passwordRequired && !data.authenticated) {
+    document.getElementById('login-page').style.display = '';
+    document.getElementById('app').style.display = 'none';
+    return false;
+  }
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  return true;
+}
+
+async function doLogin() {
+  const pw = document.getElementById('login-password').value;
+  try {
+    await post('/api/auth/login', { password: pw });
+    document.getElementById('login-error').style.display = 'none';
+    await checkAuth();
+    startAutoRefresh();
+    loadCurrentPage();
+  } catch (e) {
+    const el = document.getElementById('login-error');
+    el.textContent = e.message;
+    el.style.display = '';
+  }
+}
+
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+// ---- Navigation ----
+
+function switchPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === name);
+  });
+  loadCurrentPage();
+}
+
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.addEventListener('click', () => switchPage(btn.dataset.page));
+});
+
+function getCurrentPage() {
+  const active = document.querySelector('nav button.active');
+  return active ? active.dataset.page : 'dashboard';
+}
+
+function loadCurrentPage() {
+  const page = getCurrentPage();
+  if (page === 'dashboard') loadDashboard();
+  else if (page === 'workers') loadWorkers();
+  else if (page === 'sessions') loadSessions();
+  else if (page === 'access') loadAccess();
+  else if (page === 'environment') loadEnvironment();
+  else if (page === 'cron') loadCron();
+}
+
+// ---- Auto refresh ----
+
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    const page = getCurrentPage();
+    if (page === 'dashboard' || page === 'workers') loadCurrentPage();
+  }, 5000);
+}
+
+// ---- Dashboard ----
+
+async function loadDashboard() {
+  try {
+    const data = await api('/api/status');
+    document.getElementById('stat-uptime').textContent = data.uptimeHuman;
+    document.getElementById('stat-workers').textContent = data.workerCount;
+    document.getElementById('stat-sessions').textContent = data.sessionCount;
+    document.getElementById('uptime-badge').textContent = data.uptimeHuman;
+
+    const tbody = document.getElementById('dash-workers');
+    tbody.innerHTML = data.workers.map(w => `
+      <tr>
+        <td class="mono">${esc(w.name)}</td>
+        <td><span class="badge badge-${w.type}">${w.type}</span></td>
+        <td class="mono">${w.pid ?? '-'}</td>
+        <td><span class="badge badge-${w.status}">${w.status}</span></td>
+        <td class="btn-group">
+          <button class="btn btn-sm" onclick="restartWorker('${esc(w.name)}')">Restart</button>
+          <button class="btn btn-sm btn-danger" onclick="killWorker('${esc(w.name)}')">Kill</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    console.error('Failed to load dashboard:', e);
+  }
+}
+
+// ---- Workers ----
+
+async function loadWorkers() {
+  try {
+    const [workers, manifests] = await Promise.all([
+      api('/api/workers'),
+      api('/api/manifests'),
+    ]);
+
+    const tbody = document.getElementById('workers-table');
+    tbody.innerHTML = workers.map(w => `
+      <tr>
+        <td class="mono">${esc(w.name)}</td>
+        <td><span class="badge badge-${w.type}">${w.type}</span></td>
+        <td class="mono">${w.pid ?? '-'}</td>
+        <td><span class="badge badge-${w.status}">${w.status}</span></td>
+        <td>${w.restartCount}</td>
+        <td class="btn-group">
+          <button class="btn btn-sm" onclick="restartWorker('${esc(w.name)}')">Restart</button>
+          <button class="btn btn-sm btn-danger" onclick="killWorker('${esc(w.name)}')">Kill</button>
+        </td>
+      </tr>
+    `).join('');
+
+    const ml = document.getElementById('manifests-list');
+    ml.innerHTML = manifests.map(m => {
+      const missingCount = m.validation.missing.length;
+      const statusColor = missingCount > 0 ? '#fca5a5' : '#6ee7b7';
+      const statusText = missingCount > 0 ? `${missingCount} missing env var(s)` : 'Ready';
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid #0f3460">
+          <div>
+            <span class="mono" style="font-weight:600">${esc(m.name)}</span>
+            <span class="badge badge-${m.type}" style="margin-left:0.5rem">${m.type}</span>
+            <div style="color:#888;font-size:0.8rem;margin-top:0.15rem">${esc(m.description)}</div>
+            <div style="color:${statusColor};font-size:0.75rem;margin-top:0.15rem">${statusText}</div>
+          </div>
+          <button class="btn btn-sm btn-success" onclick="spawnManifest('${esc(m.name)}','${esc(m.type)}','${esc(m.workerPath)}')">Spawn</button>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('Failed to load workers:', e);
+  }
+}
+
+async function restartWorker(name) {
+  try {
+    await post('/api/workers/restart', { name });
+    toast(`Worker '${name}' restarting`, 'success');
+    loadCurrentPage();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function killWorker(name) {
+  try {
+    await post('/api/workers/kill', { name });
+    toast(`Worker '${name}' killed`, 'success');
+    loadCurrentPage();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function spawnManifest(name, type, workerPath) {
+  document.getElementById('spawn-name').value = name;
+  document.getElementById('spawn-type').value = type;
+  document.getElementById('spawn-path').value = workerPath;
+  spawnCustomWorker();
+}
+
+async function spawnCustomWorker() {
+  const name = document.getElementById('spawn-name').value.trim();
+  const type = document.getElementById('spawn-type').value;
+  const workerPath = document.getElementById('spawn-path').value.trim();
+  if (!name || !workerPath) { toast('Name and path required', 'error'); return; }
+  try {
+    await post('/api/workers/spawn', { name, type, workerPath });
+    toast(`Worker '${name}' spawned`, 'success');
+    document.getElementById('spawn-name').value = '';
+    document.getElementById('spawn-path').value = '';
+    loadCurrentPage();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- Sessions ----
+
+async function loadSessions() {
+  try {
+    const sessions = await api('/api/sessions');
+    const keys = Object.keys(sessions);
+    const tbody = document.getElementById('sessions-table');
+    const empty = document.getElementById('sessions-empty');
+
+    if (keys.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = keys.map(k => {
+      const s = sessions[k];
+      const sid = s.sessionId ? s.sessionId.slice(0, 12) + '...' : '-';
+      return `
+        <tr>
+          <td class="mono" style="font-size:0.8rem">${esc(k)}</td>
+          <td>${esc(s.name || '-')}</td>
+          <td class="mono">${esc(s.provider)}</td>
+          <td class="mono" style="font-size:0.8rem">${esc(s.cwd || '-')}</td>
+          <td class="mono" style="font-size:0.8rem" title="${esc(s.sessionId || '')}">${sid}</td>
+          <td class="btn-group">
+            <button class="btn btn-sm" onclick="editSession('${escAttr(k)}')">Edit</button>
+            <button class="btn btn-sm" onclick="resetSession('${escAttr(k)}')">Reset</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteSession('${escAttr(k)}')">Delete</button>
+          </td>
+        </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('Failed to load sessions:', e);
+  }
+}
+
+async function editSession(key) {
+  const sessions = await api('/api/sessions');
+  const s = sessions[key];
+  if (!s) { toast('Session not found', 'error'); return; }
+
+  openModal(`
+    <h2>Edit Session: ${esc(key)}</h2>
+    <div class="form-row"><label>Provider</label><input id="edit-provider" value="${escAttr(s.provider)}"></div>
+    <div class="form-row"><label>CWD</label><input id="edit-cwd" value="${escAttr(s.cwd || '')}"></div>
+    <div class="form-row"><label>Env (JSON)</label><textarea id="edit-env" rows="3">${esc(JSON.stringify(s.env || {}, null, 2))}</textarea></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSession('${escAttr(key)}')">Save</button>
+    </div>
+  `);
+}
+
+async function saveSession(key) {
+  try {
+    const provider = document.getElementById('edit-provider').value.trim();
+    const cwd = document.getElementById('edit-cwd').value.trim();
+    let env;
+    try { env = JSON.parse(document.getElementById('edit-env').value); } catch { env = {}; }
+    await post('/api/sessions/update', { key, updates: { provider, cwd: cwd || undefined, env } });
+    toast('Session updated', 'success');
+    closeModal();
+    loadSessions();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function resetSession(key) {
+  try {
+    await post('/api/sessions/reset', { key });
+    toast('Session reset', 'success');
+    loadSessions();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteSession(key) {
+  if (!confirm(`Delete session ${key}?`)) return;
+  try {
+    await post('/api/sessions/delete', { key });
+    toast('Session deleted', 'success');
+    loadSessions();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- Access ----
+
+let currentAccess = null;
+
+async function loadAccess() {
+  try {
+    currentAccess = await api('/api/access');
+    document.getElementById('access-dm-policy').value = currentAccess.dmPolicy;
+
+    // Allowlist
+    const items = document.getElementById('allowlist-items');
+    items.innerHTML = currentAccess.allowFrom.map(id => `
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem">
+        <span class="mono" style="flex:1">${esc(id)}</span>
+        <button class="btn btn-sm btn-danger" onclick="removeAllowlistEntry('${escAttr(id)}')">Remove</button>
+      </div>
+    `).join('') || '<div style="color:#888;font-size:0.85rem">No entries</div>';
+
+    // Pending
+    const pending = Object.entries(currentAccess.pending || {});
+    const pendingTbody = document.getElementById('pending-table');
+    const pendingEmpty = document.getElementById('pending-empty');
+    if (pending.length === 0) {
+      pendingTbody.innerHTML = '';
+      pendingEmpty.style.display = '';
+    } else {
+      pendingEmpty.style.display = 'none';
+      pendingTbody.innerHTML = pending.map(([code, p]) => `
+        <tr>
+          <td class="mono">${esc(code)}</td>
+          <td class="mono">${esc(p.senderId)}</td>
+          <td class="mono">${esc(p.chatId)}</td>
+          <td>${new Date(p.createdAt).toLocaleString()}</td>
+          <td class="btn-group">
+            <button class="btn btn-sm btn-success" onclick="approvePairing('${escAttr(code)}')">Approve</button>
+            <button class="btn btn-sm btn-danger" onclick="denyPairing('${escAttr(code)}')">Deny</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Groups
+    const groups = Object.entries(currentAccess.groups || {});
+    const groupsList = document.getElementById('groups-list');
+    const groupsEmpty = document.getElementById('groups-empty');
+    if (groups.length === 0) {
+      groupsList.innerHTML = '';
+      groupsEmpty.style.display = '';
+    } else {
+      groupsEmpty.style.display = 'none';
+      groupsList.innerHTML = groups.map(([gid, g]) => `
+        <div style="padding:0.5rem 0;border-bottom:1px solid #0f3460">
+          <div class="mono" style="font-weight:600">${esc(gid)}</div>
+          <div style="font-size:0.8rem;color:#888;margin-top:0.15rem">
+            Require mention: ${g.requireMention ? 'Yes' : 'No'} |
+            Allowed: ${g.allowFrom.length > 0 ? g.allowFrom.map(esc).join(', ') : 'all'}
+          </div>
+        </div>
+      `).join('');
+    }
+  } catch (e) {
+    console.error('Failed to load access:', e);
+  }
+}
+
+async function updateAccessPolicy() {
+  try {
+    const dmPolicy = document.getElementById('access-dm-policy').value;
+    await post('/api/access/update', { dmPolicy });
+    toast('DM policy updated', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function addAllowlistEntry() {
+  const input = document.getElementById('allowlist-new');
+  const id = input.value.trim();
+  if (!id) return;
+  try {
+    const access = await api('/api/access');
+    if (!access.allowFrom.includes(id)) {
+      access.allowFrom.push(id);
+      await post('/api/access/update', { allowFrom: access.allowFrom });
+    }
+    input.value = '';
+    toast('User added to allowlist', 'success');
+    loadAccess();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function removeAllowlistEntry(id) {
+  try {
+    const access = await api('/api/access');
+    access.allowFrom = access.allowFrom.filter(x => x !== id);
+    await post('/api/access/update', { allowFrom: access.allowFrom });
+    toast('User removed from allowlist', 'success');
+    loadAccess();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function approvePairing(code) {
+  try {
+    await post('/api/access/approve', { code });
+    toast('Pairing approved', 'success');
+    loadAccess();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function denyPairing(code) {
+  try {
+    await post('/api/access/deny', { code });
+    toast('Pairing denied', 'success');
+    loadAccess();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- Environment ----
+
+async function loadEnvironment() {
+  try {
+    const globalEnv = await api('/api/env/global');
+    renderKVEditor('global-env-editor', globalEnv);
+
+    // Per-worker env cards
+    const workers = await api('/api/workers');
+    const container = document.getElementById('worker-env-cards');
+    container.innerHTML = '';
+    for (const w of workers) {
+      const env = await api(`/api/env/worker/${encodeURIComponent(w.name)}`);
+      const cardId = `worker-env-${w.name}`;
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <h2>Worker: ${esc(w.name)}</h2>
+        <div id="${cardId}" class="kv-editor"></div>
+        <div style="margin-top:0.75rem;display:flex;gap:0.5rem">
+          <button class="btn" onclick="addWorkerEnvRow('${escAttr(w.name)}')">+ Add Variable</button>
+          <button class="btn btn-primary" onclick="saveWorkerEnv('${escAttr(w.name)}')">Save</button>
+        </div>
+      `;
+      container.appendChild(card);
+      renderKVEditor(cardId, env);
+    }
+  } catch (e) {
+    console.error('Failed to load environment:', e);
+  }
+}
+
+function renderKVEditor(containerId, data) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const entries = Object.entries(data);
+  if (entries.length === 0) {
+    container.innerHTML = '<div style="color:#888;font-size:0.85rem;padding:0.25rem 0">No variables set</div>';
+    return;
+  }
+  for (const [k, v] of entries) {
+    addKVRow(container, k, v);
+  }
+}
+
+function addKVRow(container, key = '', value = '') {
+  // Remove "No variables" placeholder if present
+  const placeholder = container.querySelector('div[style*="color:#888"]');
+  if (placeholder && !placeholder.classList.contains('kv-row')) placeholder.remove();
+
+  const row = document.createElement('div');
+  row.className = 'kv-row';
+  row.innerHTML = `
+    <input class="kv-key mono" value="${escAttr(key)}" placeholder="KEY">
+    <input class="kv-val mono" value="${escAttr(value)}" placeholder="value">
+    <button class="btn btn-sm btn-danger kv-remove" onclick="this.parentElement.remove()">X</button>
+  `;
+  container.appendChild(row);
+}
+
+function addGlobalEnvRow() {
+  addKVRow(document.getElementById('global-env-editor'));
+}
+
+function addWorkerEnvRow(name) {
+  addKVRow(document.getElementById(`worker-env-${name}`));
+}
+
+function collectKV(containerId) {
+  const container = document.getElementById(containerId);
+  const result = {};
+  for (const row of container.querySelectorAll('.kv-row')) {
+    const k = row.querySelector('.kv-key').value.trim();
+    const v = row.querySelector('.kv-val').value;
+    if (k) result[k] = v;
+  }
+  return result;
+}
+
+async function saveGlobalEnv() {
+  try {
+    const env = collectKV('global-env-editor');
+    await post('/api/env/global', { env });
+    toast('Global env saved. Restart workers to apply.', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function saveWorkerEnv(name) {
+  try {
+    const env = collectKV(`worker-env-${name}`);
+    await post(`/api/env/worker/${encodeURIComponent(name)}`, { env });
+    toast(`Env for '${name}' saved. Restart worker to apply.`, 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- Cron ----
+
+async function loadCron() {
+  try {
+    const jobs = await api('/api/cron');
+    const tbody = document.getElementById('cron-table');
+    const empty = document.getElementById('cron-empty');
+
+    if (jobs.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = jobs.map(j => `
+      <tr>
+        <td class="mono">${esc(j.name)}</td>
+        <td class="mono">${esc(j.schedule)}</td>
+        <td class="mono">${esc(j.provider)}</td>
+        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(j.prompt)}">${esc(j.prompt)}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="removeCronJob('${escAttr(j.name)}')">Remove</button></td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    console.error('Failed to load cron:', e);
+  }
+}
+
+async function addCronJob() {
+  const name = document.getElementById('cron-name').value.trim();
+  const schedule = document.getElementById('cron-schedule').value.trim();
+  const provider = document.getElementById('cron-provider').value.trim();
+  const prompt = document.getElementById('cron-prompt').value.trim();
+  if (!name || !schedule || !provider || !prompt) { toast('All fields required', 'error'); return; }
+  try {
+    await post('/api/cron/add', { name, schedule, provider, prompt });
+    toast(`Cron job '${name}' added`, 'success');
+    document.getElementById('cron-name').value = '';
+    document.getElementById('cron-schedule').value = '';
+    document.getElementById('cron-prompt').value = '';
+    loadCron();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function removeCronJob(name) {
+  try {
+    await post('/api/cron/remove', { name });
+    toast(`Cron job '${name}' removed`, 'success');
+    loadCron();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- Modal ----
+
+function openModal(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-overlay').style.display = '';
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').style.display = 'none';
+}
+
+// ---- Escape helpers ----
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escAttr(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ---- Init ----
+
+(async function init() {
+  const authed = await checkAuth();
+  if (authed) {
+    startAutoRefresh();
+    loadCurrentPage();
+  }
+})();
+</script>
+</body>
+</html>

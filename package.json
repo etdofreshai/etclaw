@@ -1,0 +1,21 @@
+{
+  "name": "etclaw",
+  "version": "0.1.0",
+  "description": "ETClaw — multi-provider AI CLI wrapper with channels, providers, skills, and cron",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "build": "bun build --target=bun src/index.ts --outfile dist/index.js",
+    "dev": "bun run --watch src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "latest",
+    "grammy": "^1.35.0",
+    "croner": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.8.0"
+  }
+}
