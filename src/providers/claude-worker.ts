@@ -43,6 +43,9 @@ async function handleQuery(chatKey: string, prompt: string, options: ProviderOpt
   if (options.systemPrompt) {
     queryOptions.systemPrompt = options.systemPrompt
   }
+  if (options.model) {
+    queryOptions.model = options.model
+  }
 
   // Pass TELEGRAM_SUBSESSION=true so sub-sessions skip Telegram plugin init
   // Use CLAUDE_CONFIG_DIR to store Claude data in persistent volume if STATE_DIR is set

@@ -203,6 +203,35 @@ async function main(): Promise<void> {
           payload: { chatId, copied, skipped, cwd },
         })
         console.error(`router: init for ${channelType}:${chatId} — copied: [${copied}], skipped: [${skipped}]`)
+      } else if (msg.type === 'session:getModel') {
+        const { channelType, chatId } = msg.payload as { channelType: string; chatId: string }
+        const session = sessionManager.get(channelType, chatId)
+        const model = session?.model ?? 'default'
+        pm.sendTo('telegram', {
+          type: 'session:modelResponse',
+          payload: { chatId, model },
+        })
+      } else if (msg.type === 'session:setModel') {
+        const { channelType, chatId, model } = msg.payload as { channelType: string; chatId: string; model: string }
+        const session = sessionManager.get(channelType, chatId)
+        if (session) {
+          session.model = model
+          sessionManager.set(channelType, chatId, session)
+        } else {
+          sessionManager.set(channelType, chatId, {
+            provider: config.defaultProvider,
+            name: chatId,
+            model,
+          })
+        }
+        // Kill existing provider so it picks up new model on next message
+        const sessionKey = `${channelType}:${chatId}`
+        killProviderForSession(sessionKey)
+        pm.sendTo('telegram', {
+          type: 'session:modelResponse',
+          payload: { chatId, model },
+        })
+        console.error(`router: model set to ${model} for ${sessionKey}`)
       }
     })
     channelCount++
@@ -273,6 +302,7 @@ async function main(): Promise<void> {
           sessionId: session?.sessionId,
           cwd: session?.cwd ?? config.defaultCwd,
           systemPrompt: config.soulPrompt,
+          model: session?.model,
         },
       },
     })

@@ -92,6 +92,28 @@ let thinkingFile: string
 let approvalInterval: ReturnType<typeof setInterval> | undefined
 let shuttingDown = false
 
+// Model aliases and available models
+const MODEL_ALIASES: Record<string, string> = {
+  'opus': 'claude-opus-4-6',
+  'sonnet': 'claude-sonnet-4-6',
+  'haiku': 'claude-haiku-4-5-20251001',
+  'o4': 'claude-opus-4-6',
+  's4': 'claude-sonnet-4-6',
+  'h4': 'claude-haiku-4-5-20251001',
+  'default': 'default',
+}
+
+const AVAILABLE_MODELS = [
+  { id: 'claude-opus-4-6', aliases: ['opus', 'o4'], description: 'Most capable, best for complex tasks' },
+  { id: 'claude-sonnet-4-6', aliases: ['sonnet', 's4'], description: 'Balanced speed and capability' },
+  { id: 'claude-haiku-4-5-20251001', aliases: ['haiku', 'h4'], description: 'Fastest, best for simple tasks' },
+]
+
+function resolveModelAlias(input: string): string {
+  const lower = input.toLowerCase().trim()
+  return MODEL_ALIASES[lower] ?? lower
+}
+
 // Track voice chat IDs for TTS on reply
 const voiceChatIds = new Set<string>()
 
@@ -733,6 +755,17 @@ function handleParentMessage(msg: IPCMessage): void {
       break
     }
 
+    case 'session:modelResponse': {
+      const { chatId, model } = msg.payload as { chatId: string; model: string }
+      // Find display info for the model
+      const info = AVAILABLE_MODELS.find(m => m.id === model)
+      const display = info ? `${model} (${info.aliases.join(', ')})` : model
+      void bot.api.sendMessage(chatId, `Model: <code>${display}</code>`, { parse_mode: 'HTML' }).catch(err => {
+        console.error(`telegram worker: failed to send model response: ${err}`)
+      })
+      break
+    }
+
     default:
       break
   }
@@ -789,6 +822,8 @@ async function startBot(): Promise<void> {
       `/new \u2014 start a fresh session\n` +
       `/reset \u2014 same as /new\n` +
       `/cwd \u2014 show or set working directory\n` +
+      `/model \u2014 show or set model (e.g. /model opus)\n` +
+      `/models \u2014 list available models\n` +
       `/stop \u2014 stop current processing\n` +
       `/queue \u2014 queue a message for after response\n` +
       `/steer \u2014 send a message immediately while processing\n` +
@@ -858,6 +893,30 @@ async function startBot(): Promise<void> {
         payload: { channelType: 'telegram', chatId },
       })
     }
+  })
+
+  bot.command('model', async ctx => {
+    const chatId = String(ctx.chat!.id)
+    const args = (ctx.message.text ?? '').replace(/^\/model(@\S+)?\s*/, '').trim()
+    if (args) {
+      const resolved = resolveModelAlias(args)
+      sendToParent({
+        type: 'session:setModel',
+        payload: { channelType: 'telegram', chatId, model: resolved },
+      })
+    } else {
+      sendToParent({
+        type: 'session:getModel',
+        payload: { channelType: 'telegram', chatId },
+      })
+    }
+  })
+
+  bot.command('models', async ctx => {
+    const lines = AVAILABLE_MODELS.map(m =>
+      `<code>${m.id}</code>\n  aliases: ${m.aliases.join(', ')}\n  ${m.description}`
+    )
+    await ctx.reply(`Available models:\n\n${lines.join('\n\n')}`, { parse_mode: 'HTML' })
   })
 
   bot.command('stop', async ctx => {
@@ -1008,11 +1067,14 @@ async function startBot(): Promise<void> {
           console.error(`telegram worker: polling as @${info.username}`)
           const commands = [
               { command: 'start', description: 'Welcome and setup guide' },
+              { command: 'init', description: 'Copy default .md files to CWD' },
               { command: 'help', description: 'What this bot can do' },
               { command: 'status', description: 'Check your pairing status' },
               { command: 'new', description: 'Start a fresh session' },
               { command: 'reset', description: 'Reset current session' },
               { command: 'cwd', description: 'Show or set working directory' },
+              { command: 'model', description: 'Show or set model' },
+              { command: 'models', description: 'List available models' },
               { command: 'stop', description: 'Stop current processing' },
               { command: 'queue', description: 'Queue message for after response' },
               { command: 'steer', description: 'Send message while processing' },

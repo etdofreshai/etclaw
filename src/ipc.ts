@@ -163,6 +163,34 @@ export interface SessionInitResponseIPC {
   }
 }
 
+/** Get current model for a session. */
+export interface SessionGetModelIPC {
+  type: 'session:getModel'
+  payload: {
+    channelType: string
+    chatId: string
+  }
+}
+
+/** Set model for a session. */
+export interface SessionSetModelIPC {
+  type: 'session:setModel'
+  payload: {
+    channelType: string
+    chatId: string
+    model: string
+  }
+}
+
+/** Response with current model. */
+export interface SessionModelResponseIPC {
+  type: 'session:modelResponse'
+  payload: {
+    chatId: string
+    model: string
+  }
+}
+
 /** Status request/response. */
 export interface ManageStatusIPC {
   type: 'manage:status'
@@ -205,6 +233,9 @@ export type IPCMessage =
   | SessionInterruptIPC
   | SessionInitIPC
   | SessionInitResponseIPC
+  | SessionGetModelIPC
+  | SessionSetModelIPC
+  | SessionModelResponseIPC
   | ManageStatusIPC
   | ManageRestartIPC
   | WorkerReadyIPC

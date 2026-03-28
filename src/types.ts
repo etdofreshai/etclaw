@@ -13,6 +13,7 @@ export interface ProviderOptions {
   sessionId?: string  // resume session
   cwd?: string
   systemPrompt?: string
+  model?: string
 }
 
 export interface Provider {
@@ -61,6 +62,7 @@ export type SessionEntry = {
   provider: string  // 'claude', 'codex', etc.
   name: string
   cwd?: string
+  model?: string    // per-session model override (e.g. 'claude-opus-4-6')
   env?: Record<string, string>  // per-session env overrides (e.g. TTS_VOICE=coral)
 }
 
