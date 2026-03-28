@@ -45,7 +45,13 @@ async function handleQuery(chatKey: string, prompt: string, options: ProviderOpt
   }
 
   // Pass TELEGRAM_SUBSESSION=true so sub-sessions skip Telegram plugin init
-  queryOptions.env = { ...process.env, TELEGRAM_SUBSESSION: 'true' }
+  // Use CLAUDE_CONFIG_DIR to store Claude data in persistent volume if STATE_DIR is set
+  const claudeConfigDir = process.env.STATE_DIR ? `${process.env.STATE_DIR}/.etclaw/.claude` : undefined
+  queryOptions.env = {
+    ...process.env,
+    TELEGRAM_SUBSESSION: 'true',
+    ...(claudeConfigDir ? { CLAUDE_CONFIG_DIR: claudeConfigDir } : {}),
+  }
 
   try {
     for await (const msg of query({ prompt, options: queryOptions })) {
