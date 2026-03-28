@@ -13,15 +13,17 @@ function readFileSafe(path: string, fallback: string = ''): string {
 export function loadConfig(): ETClawConfig {
   const projectDir = process.env.ETCLAW_PROJECT_DIR ?? process.cwd()
 
+  const seedDir = join(projectDir, 'src', 'seed')
+
   // Load SOUL.md
   const soulPrompt = readFileSafe(
-    join(projectDir, 'SOUL.md'),
+    join(seedDir, 'SOUL.md'),
     '# ETClaw\nYou are ETClaw, a helpful AI assistant.\n'
   )
 
   // Load AGENTS.md
   const agentsConfig = readFileSafe(
-    join(projectDir, 'AGENTS.md'),
+    join(seedDir, 'AGENTS.md'),
     '# Agents\n\n## default\nThe default agent.\n'
   )
 

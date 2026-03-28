@@ -179,18 +179,19 @@ async function main(): Promise<void> {
         const session = sessionManager.get(channelType, chatId)
         const cwd = session?.cwd ?? config.defaultCwd
 
-        // Find all .md files in projectDir
+        // Copy seed files to session workspace
+        const seedDir = join(config.projectDir, 'src', 'seed')
         const copied: string[] = []
         const skipped: string[] = []
         try {
-          const mdFiles = readdirSync(config.projectDir).filter(f => f.endsWith('.md'))
+          const mdFiles = readdirSync(seedDir).filter(f => f.endsWith('.md'))
           mkdirSync(cwd, { recursive: true })
           for (const file of mdFiles) {
             const dest = join(cwd, file)
             if (existsSync(dest)) {
               skipped.push(file)
             } else {
-              copyFileSync(join(config.projectDir, file), dest)
+              copyFileSync(join(seedDir, file), dest)
               copied.push(file)
             }
           }

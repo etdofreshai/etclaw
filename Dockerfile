@@ -11,7 +11,6 @@ FROM base AS runner
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json bun.lock ./
 COPY src ./src
-COPY *.md ./
 
 # Create non-root user (Claude Code refuses bypassPermissions as root)
 RUN groupadd -r etclaw && useradd -r -g etclaw -d /app etclaw
