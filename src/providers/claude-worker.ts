@@ -9,9 +9,58 @@
  */
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { onParentMessage, sendToParent, type IPCMessage } from '../ipc'
 import type { ProviderOptions } from '../types'
 import { formatToolUse } from './format-tool'
+
+// ---- Workspace file assembly ----
+
+/** OpenClaw workspace files, in injection order. */
+const WORKSPACE_FILES = [
+  'SOUL.md',
+  'IDENTITY.md',
+  'USER.md',
+  'AGENTS.md',
+  'TOOLS.md',
+  'HEARTBEAT.md',
+  'MEMORY.md',
+]
+
+const BOOTSTRAP_MAX_CHARS = 20_000
+
+function readFileSafe(path: string): string {
+  try {
+    const content = readFileSync(path, 'utf8').trim()
+    if (content.length > BOOTSTRAP_MAX_CHARS) {
+      return content.slice(0, BOOTSTRAP_MAX_CHARS) + '\n\n[... truncated ...]'
+    }
+    return content
+  } catch {
+    return ''
+  }
+}
+
+/** Build the system prompt by reading workspace files from the CWD. */
+function buildSystemPrompt(cwd: string, basePrompt?: string): string {
+  const sections: string[] = []
+
+  if (basePrompt) {
+    sections.push(basePrompt)
+  }
+
+  sections.push('# Project Context\n\nThe following workspace files define your identity, behavior, and memory.')
+
+  for (const file of WORKSPACE_FILES) {
+    const content = readFileSafe(join(cwd, file))
+    if (content) {
+      sections.push(`## ${file}\n\n${content}`)
+    }
+  }
+
+  return sections.join('\n\n---\n\n')
+}
 
 // ---- Worker state ----
 
@@ -40,9 +89,9 @@ async function handleQuery(chatKey: string, prompt: string, options: ProviderOpt
   if (options.cwd) {
     queryOptions.cwd = options.cwd
   }
-  if (options.systemPrompt) {
-    queryOptions.systemPrompt = options.systemPrompt
-  }
+  // Build system prompt from workspace files in CWD
+  const cwd = options.cwd ?? process.cwd()
+  queryOptions.systemPrompt = buildSystemPrompt(cwd, options.systemPrompt)
   if (options.model) {
     queryOptions.model = options.model
   }
