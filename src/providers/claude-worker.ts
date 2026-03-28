@@ -10,7 +10,7 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { readFileSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { onParentMessage, sendToParent, type IPCMessage } from '../ipc'
 import type { ProviderOptions } from '../types'
 import { formatToolUse } from './format-tool'
@@ -100,8 +100,12 @@ async function handleQuery(chatKey: string, prompt: string, options: ProviderOpt
   // Pass TELEGRAM_SUBSESSION=true so sub-sessions skip Telegram plugin init
   // Use CLAUDE_CONFIG_DIR to store Claude data in persistent volume if STATE_DIR is set
   const claudeConfigDir = process.env.STATE_DIR ? `${process.env.STATE_DIR}/.etclaw/.claude` : undefined
+  // Add project bin/ to PATH so the agent can use `trash` and other local scripts
+  const binDir = resolve(import.meta.dir, '../../bin')
+  const pathSep = process.platform === 'win32' ? ';' : ':'
   queryOptions.env = {
     ...process.env,
+    PATH: `${binDir}${pathSep}${process.env.PATH ?? ''}`,
     TELEGRAM_SUBSESSION: 'true',
     ...(claudeConfigDir ? { CLAUDE_CONFIG_DIR: claudeConfigDir } : {}),
   }

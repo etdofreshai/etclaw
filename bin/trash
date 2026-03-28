@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# trash — move files to .etclaw/.trash instead of deleting them
+# Usage: trash <file|dir> [file|dir ...]
+
+set -euo pipefail
+
+if [ $# -eq 0 ]; then
+  echo "Usage: trash <file|dir> [file|dir ...]" >&2
+  exit 1
+fi
+
+# Resolve trash dir relative to the current working directory
+TRASH_DIR="${PWD}/.etclaw/.trash"
+mkdir -p "$TRASH_DIR"
+
+for target in "$@"; do
+  if [ ! -e "$target" ]; then
+    echo "trash: '$target' not found" >&2
+    continue
+  fi
+
+  basename="$(basename "$target")"
+  timestamp="$(date +%Y%m%d-%H%M%S)"
+
+  # Avoid collisions with a timestamp suffix
+  dest="${TRASH_DIR}/${timestamp}_${basename}"
+
+  mv "$target" "$dest"
+  echo "trashed: $target -> $dest"
+done

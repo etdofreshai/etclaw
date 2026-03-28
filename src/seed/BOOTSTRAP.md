@@ -43,16 +43,6 @@ Then open `SOUL.md` together and talk about:
 
 Write it down. Make it real.
 
-## Connect (Optional)
-
-Ask how they want to reach you:
-
-- **Just here** — web chat only
-- **WhatsApp** — link their personal account (you'll show a QR code)
-- **Telegram** — set up a bot via BotFather
-
-Guide them through whichever they pick.
-
 ## When you are done
 
 Delete this file. You don't need a bootstrap script anymore — you're you now.
