@@ -7,6 +7,7 @@
  */
 
 import { join } from 'path'
+import { existsSync } from 'fs'
 import { loadConfig } from './config'
 import { SessionManager } from './sessions'
 import { initSkills } from './skills'
@@ -75,7 +76,8 @@ async function main(): Promise<void> {
       const providerType = session?.provider ?? config.defaultProvider
       const workerPath = getWorkerPathForProvider(providerType)
       const perSessionEnv = session?.env ?? {}
-      const workerCwd = session?.cwd ?? config.defaultCwd
+      const rawCwd = session?.cwd ?? config.defaultCwd
+      const workerCwd = existsSync(rawCwd) ? rawCwd : config.projectDir
 
       pm.spawn(workerName, 'provider', workerPath, {
         defaultProvider: providerType,
@@ -131,6 +133,46 @@ async function main(): Promise<void> {
         killProviderForSession(sessionKey)
         sessionManager.reset(channelType, chatId)
         console.error(`router: session reset for ${sessionKey}`)
+      } else if (msg.type === 'session:getCwd') {
+        const { channelType, chatId } = msg.payload as { channelType: string; chatId: string }
+        const session = sessionManager.get(channelType, chatId)
+        const cwd = session?.cwd ?? config.defaultCwd
+        pm.sendTo('telegram', {
+          type: 'session:cwdResponse',
+          payload: { chatId, cwd },
+        })
+      } else if (msg.type === 'session:setCwd') {
+        const { channelType, chatId, cwd } = msg.payload as { channelType: string; chatId: string; cwd: string }
+        const session = sessionManager.get(channelType, chatId)
+        if (session) {
+          session.cwd = cwd
+          sessionManager.set(channelType, chatId, session)
+        } else {
+          sessionManager.set(channelType, chatId, {
+            provider: config.defaultProvider,
+            name: chatId,
+            cwd,
+          })
+        }
+        // Kill existing provider so it picks up new CWD on next message
+        const sessionKey = `${channelType}:${chatId}`
+        killProviderForSession(sessionKey)
+        pm.sendTo('telegram', {
+          type: 'session:cwdResponse',
+          payload: { chatId, cwd },
+        })
+        console.error(`router: CWD set to ${cwd} for ${sessionKey}`)
+      } else if (msg.type === 'session:interrupt') {
+        const { channelType, chatId } = msg.payload as { channelType: string; chatId: string }
+        const sessionKey = `${channelType}:${chatId}`
+        killProviderForSession(sessionKey)
+        pendingQueries.delete(sessionKey)
+        console.error(`router: interrupted provider for ${sessionKey}`)
+        // Notify channel to clean up thinking messages
+        pm.sendTo('telegram', {
+          type: 'channel:deleteThinking',
+          payload: { chatId },
+        })
       }
     })
     channelCount++

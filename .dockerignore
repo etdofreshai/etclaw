@@ -1,0 +1,7 @@
+node_modules
+dist
+.etclaw
+.env
+.git
+*.md
+!soul.md

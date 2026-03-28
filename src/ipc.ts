@@ -106,6 +106,43 @@ export interface SessionResetIPC {
   }
 }
 
+/** Get current working directory for a session. */
+export interface SessionGetCwdIPC {
+  type: 'session:getCwd'
+  payload: {
+    channelType: string
+    chatId: string
+  }
+}
+
+/** Response with current working directory. */
+export interface SessionCwdResponseIPC {
+  type: 'session:cwdResponse'
+  payload: {
+    chatId: string
+    cwd: string
+  }
+}
+
+/** Set working directory for a session. */
+export interface SessionSetCwdIPC {
+  type: 'session:setCwd'
+  payload: {
+    channelType: string
+    chatId: string
+    cwd: string
+  }
+}
+
+/** Interrupt/stop the current provider for a session. */
+export interface SessionInterruptIPC {
+  type: 'session:interrupt'
+  payload: {
+    channelType: string
+    chatId: string
+  }
+}
+
 /** Status request/response. */
 export interface ManageStatusIPC {
   type: 'manage:status'
@@ -142,6 +179,10 @@ export type IPCMessage =
   | ChannelDeleteThinkingIPC
   | ChannelThinkingIdIPC
   | SessionResetIPC
+  | SessionGetCwdIPC
+  | SessionCwdResponseIPC
+  | SessionSetCwdIPC
+  | SessionInterruptIPC
   | ManageStatusIPC
   | ManageRestartIPC
   | WorkerReadyIPC

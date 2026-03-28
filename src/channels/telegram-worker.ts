@@ -95,6 +95,9 @@ let shuttingDown = false
 // Track voice chat IDs for TTS on reply
 const voiceChatIds = new Set<string>()
 
+// Message queue for /queue command — messages sent after current response finishes
+const messageQueue = new Map<string, string[]>()
+
 // Track thinking message IDs per chat for deletion
 const thinkingMessageIds = new Map<string, number[]>()
 
@@ -588,9 +591,7 @@ function handleParentMessage(msg: IPCMessage): void {
       void (async () => {
         try {
           for (let i = 0; i < chunks.length; i++) {
-            const shouldReplyTo = ctx?.msgId != null && !ctx?.isVoice && replyMode !== 'off' && (replyMode === 'all' || i === 0)
             await bot.api.sendMessage(chatId, chunks[i], {
-              ...(shouldReplyTo ? { reply_parameters: { message_id: ctx!.msgId! } } : {}),
               parse_mode: 'HTML' as const,
             })
           }
@@ -625,6 +626,26 @@ function handleParentMessage(msg: IPCMessage): void {
           console.error(`telegram worker: failed to send response: ${err}`)
         } finally {
           messageContexts.delete(chatId)
+
+          // Drain queued messages
+          const queue = messageQueue.get(chatId)
+          if (queue && queue.length > 0) {
+            const next = queue.shift()!
+            if (queue.length === 0) messageQueue.delete(chatId)
+            console.error(`telegram worker: sending queued message for ${chatId}`)
+            sendToParent({
+              type: 'channel:message',
+              payload: {
+                channelType: 'telegram',
+                chatId,
+                messageId: '',
+                userId: '',
+                userName: 'ET',
+                text: next,
+                chatType: 'dm',
+              },
+            })
+          }
         }
       })()
 
@@ -692,6 +713,14 @@ function handleParentMessage(msg: IPCMessage): void {
       break
     }
 
+    case 'session:cwdResponse': {
+      const { chatId, cwd } = msg.payload as { chatId: string; cwd: string }
+      void bot.api.sendMessage(chatId, `📂 CWD: <code>${cwd}</code>`, { parse_mode: 'HTML' }).catch(err => {
+        console.error(`telegram worker: failed to send CWD response: ${err}`)
+      })
+      break
+    }
+
     default:
       break
   }
@@ -727,7 +756,12 @@ async function startBot(): Promise<void> {
       `/start \u2014 pairing instructions\n` +
       `/status \u2014 check your pairing state\n` +
       `/new \u2014 start a fresh session\n` +
-      `/reset \u2014 same as /new`
+      `/reset \u2014 same as /new\n` +
+      `/cwd \u2014 show or set working directory\n` +
+      `/stop \u2014 stop current processing\n` +
+      `/queue \u2014 queue a message for after response\n` +
+      `/steer \u2014 send a message immediately while processing\n` +
+      `/clear \u2014 clear thinking/tool messages`
     )
   })
 
@@ -770,6 +804,96 @@ async function startBot(): Promise<void> {
       payload: { channelType: 'telegram', chatId },
     })
     await ctx.reply('Session reset. Next message will start a fresh conversation.')
+  })
+
+  bot.command('cwd', async ctx => {
+    const chatId = String(ctx.chat!.id)
+    const args = (ctx.message.text ?? '').replace(/^\/cwd(@\S+)?\s*/, '').trim()
+    if (args) {
+      // Validate path before setting
+      if (!existsSync(args)) {
+        await ctx.reply(`Directory not found: ${args}`)
+        return
+      }
+      // Set CWD
+      sendToParent({
+        type: 'session:setCwd',
+        payload: { channelType: 'telegram', chatId, cwd: args },
+      })
+    } else {
+      // Get CWD
+      sendToParent({
+        type: 'session:getCwd',
+        payload: { channelType: 'telegram', chatId },
+      })
+    }
+  })
+
+  bot.command('stop', async ctx => {
+    const chatId = String(ctx.chat!.id)
+    sendToParent({
+      type: 'session:interrupt',
+      payload: { channelType: 'telegram', chatId },
+    })
+    await ctx.reply('⛔ Stopping current process...')
+  })
+
+  bot.command('interrupt', async ctx => {
+    const chatId = String(ctx.chat!.id)
+    sendToParent({
+      type: 'session:interrupt',
+      payload: { channelType: 'telegram', chatId },
+    })
+    await ctx.reply('⛔ Stopping current process...')
+  })
+
+  bot.command('queue', async ctx => {
+    const chatId = String(ctx.chat!.id)
+    const message = (ctx.message.text ?? '').replace(/^\/queue(@\S+)?\s*/, '').trim()
+    if (!message) {
+      await ctx.reply('Usage: /queue <message>\nQueues a message to send after the current response finishes.')
+      return
+    }
+    const queue = messageQueue.get(chatId) ?? []
+    queue.push(message)
+    messageQueue.set(chatId, queue)
+    await ctx.reply(`📋 Queued (${queue.length} pending)`)
+  })
+
+  bot.command('steer', async ctx => {
+    const message = (ctx.message.text ?? '').replace(/^\/steer(@\S+)?\s*/, '').trim()
+    if (!message) {
+      await ctx.reply('Usage: /steer <message>\nSends a message immediately, even while processing.')
+      return
+    }
+    // Steer is the default — just forward as a normal message
+    await handleInbound(ctx, message, undefined)
+  })
+
+  bot.command('clear', async ctx => {
+    const chatId = String(ctx.chat!.id)
+    const ids = thinkingMessageIds.get(chatId) ?? []
+    // Also load any persisted IDs for this chat
+    const persisted = loadThinkingMessages()
+    const persistedIds = persisted[chatId] ?? []
+    const allIds = [...new Set([...ids, ...persistedIds])]
+
+    if (allIds.length === 0) {
+      await ctx.reply('No thinking messages to clear.')
+      return
+    }
+
+    for (const id of allIds) {
+      void bot.api.deleteMessage(chatId, id).catch(() => {})
+    }
+    thinkingMessageIds.delete(chatId)
+    // Remove this chat from persisted file
+    delete persisted[chatId]
+    try {
+      writeFileSync(thinkingFile, JSON.stringify(persisted, null, 2) + '\n')
+    } catch {}
+
+    await ctx.reply(`🧹 Cleared ${allIds.length} thinking message(s).`)
   })
 
   // Text messages
@@ -851,19 +975,27 @@ async function startBot(): Promise<void> {
         onStart: info => {
           botUsername = info.username
           console.error(`telegram worker: polling as @${info.username}`)
-          void bot.api.setMyCommands(
-            [
+          const commands = [
               { command: 'start', description: 'Welcome and setup guide' },
               { command: 'help', description: 'What this bot can do' },
               { command: 'status', description: 'Check your pairing status' },
               { command: 'new', description: 'Start a fresh session' },
               { command: 'reset', description: 'Reset current session' },
-            ],
-            { scope: { type: 'all_private_chats' } },
-          ).catch(() => {})
+              { command: 'cwd', description: 'Show or set working directory' },
+              { command: 'stop', description: 'Stop current processing' },
+              { command: 'queue', description: 'Queue message for after response' },
+              { command: 'steer', description: 'Send message while processing' },
+              { command: 'clear', description: 'Clear thinking/tool messages' },
+            ]
+          void Promise.all([
+            bot.api.setMyCommands(commands, { scope: { type: 'all_private_chats' } }),
+            bot.api.setMyCommands(commands, { scope: { type: 'all_group_chats' } }),
+          ]).catch(() => {})
 
           // Clean up any thinking messages left over from a previous crash/restart
-          void cleanupStaleThinkingMessages()
+          if (config.deleteThinkingAfterResponse) {
+            void cleanupStaleThinkingMessages()
+          }
 
           // Signal ready to main process
           sendToParent({ type: 'worker:ready', payload: { name: 'telegram' } })
