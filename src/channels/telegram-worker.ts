@@ -20,6 +20,63 @@ import { formatToolUse, formatToolUseRaw } from '../providers/format-tool'
 
 const MAX_CHUNK_LIMIT = 4096
 
+// ---- Rate-limited Telegram API queue ----
+// Serializes API calls per chat and respects 429 retry_after headers.
+
+interface QueuedCall<T = any> {
+  fn: () => Promise<T>
+  resolve: (value: T) => void
+  reject: (err: any) => void
+}
+
+const apiQueue: QueuedCall[] = []
+let apiQueueRunning = false
+let globalRetryAfter = 0 // timestamp (ms) until which we must wait
+
+async function enqueueApiCall<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    apiQueue.push({ fn, resolve, reject })
+    void drainApiQueue()
+  })
+}
+
+async function drainApiQueue(): Promise<void> {
+  if (apiQueueRunning) return
+  apiQueueRunning = true
+
+  while (apiQueue.length > 0) {
+    // Respect global retry-after
+    const now = Date.now()
+    if (globalRetryAfter > now) {
+      const wait = globalRetryAfter - now
+      console.error(`telegram worker: rate limited, waiting ${Math.ceil(wait / 1000)}s (${apiQueue.length} queued)`)
+      await new Promise(r => setTimeout(r, wait))
+    }
+
+    const item = apiQueue.shift()!
+    try {
+      const result = await item.fn()
+      item.resolve(result)
+    } catch (err: any) {
+      // Check for 429 Too Many Requests
+      if (err instanceof GrammyError && err.error_code === 429) {
+        const retryAfter = (err.parameters?.retry_after ?? 30) + 1 // +1s buffer
+        globalRetryAfter = Date.now() + retryAfter * 1000
+        console.error(`telegram worker: 429 hit, retry after ${retryAfter}s — requeuing`)
+        // Put it back at the front
+        apiQueue.unshift(item)
+      } else {
+        item.reject(err)
+      }
+    }
+
+    // Small delay between calls to avoid bursts (30 calls/sec limit for bots)
+    await new Promise(r => setTimeout(r, 50))
+  }
+
+  apiQueueRunning = false
+}
+
 // ---- Markdown to Telegram HTML converter ----
 
 function markdownToTelegramHTML(text: string): string {
@@ -151,7 +208,7 @@ async function cleanupStaleThinkingMessages(): Promise<void> {
   let count = 0
   for (const [chatId, ids] of Object.entries(stale)) {
     for (const id of ids) {
-      void bot.api.deleteMessage(chatId, id).catch(() => {})
+      void enqueueApiCall(() => bot.api.deleteMessage(chatId, id)).catch(() => {})
       count++
     }
   }
@@ -273,7 +330,7 @@ function gate(ctx: Context): { action: 'deliver'; access: Access } | { action: '
       if (access.allowFrom.includes(senderId)) {
         access.groups[groupId] = { requireMention: false, allowFrom: [] }
         saveAccess(access)
-        void bot.api.sendMessage(groupId, `Group ${groupId} auto-added (trusted user ${senderId}).`).catch(() => {})
+        void enqueueApiCall(() => bot.api.sendMessage(groupId, `Group ${groupId} auto-added (trusted user ${senderId}).`)).catch(() => {})
         return { action: 'deliver', access }
       }
       return { action: 'drop' }
@@ -459,7 +516,7 @@ function checkApprovals(): void {
 
   for (const senderId of files) {
     const file = join(approvedDir, senderId)
-    void bot.api.sendMessage(senderId, "Paired! Say hi to Claude.").then(
+    void enqueueApiCall(() => bot.api.sendMessage(senderId, "Paired! Say hi to Claude.")).then(
       () => rmSync(file, { force: true }),
       (err: Error) => {
         console.error(`telegram worker: failed to send approval confirm: ${err}`)
@@ -510,9 +567,9 @@ async function handleInbound(
   const transcription = voiceExtra?.transcription
   if (transcription) {
     const fromName = from.first_name ?? from.username ?? 'User'
-    void bot.api.sendMessage(chatId, `<blockquote>${fromName}: ${transcription}</blockquote>`, {
+    void enqueueApiCall(() => bot.api.sendMessage(chatId, `<blockquote>${fromName}: ${transcription}</blockquote>`, {
       parse_mode: 'HTML',
-    }).catch(() => {})
+    })).catch(() => {})
   }
 
   const content = transcription ?? text
@@ -533,7 +590,7 @@ async function handleInbound(
       type: 'session:reset',
       payload: { channelType: 'telegram', chatId },
     })
-    void bot.api.sendMessage(chatId, 'Session reset. Next message will start a fresh conversation.').catch(() => {})
+    void enqueueApiCall(() => bot.api.sendMessage(chatId, 'Session reset. Next message will start a fresh conversation.')).catch(() => {})
     return
   }
 
@@ -595,7 +652,7 @@ function handleParentMessage(msg: IPCMessage): void {
       if (config.deleteThinkingAfterResponse) {
         const ids = thinkingMessageIds.get(chatId) ?? []
         for (const id of ids) {
-          void bot.api.deleteMessage(chatId, id).catch(() => {})
+          void enqueueApiCall(() => bot.api.deleteMessage(chatId, id)).catch(() => {})
         }
         thinkingMessageIds.delete(chatId)
         saveThinkingMessages()
@@ -613,9 +670,9 @@ function handleParentMessage(msg: IPCMessage): void {
       void (async () => {
         try {
           for (let i = 0; i < chunks.length; i++) {
-            await bot.api.sendMessage(chatId, chunks[i], {
+            await enqueueApiCall(() => bot.api.sendMessage(chatId, chunks[i], {
               parse_mode: 'HTML' as const,
-            })
+            }))
           }
 
           // Send file attachments
@@ -627,9 +684,9 @@ function handleParentMessage(msg: IPCMessage): void {
               ? { reply_parameters: { message_id: ctx.msgId } }
               : undefined
             if (PHOTO_EXTS.has(ext)) {
-              await bot.api.sendPhoto(chatId, input, opts)
+              await enqueueApiCall(() => bot.api.sendPhoto(chatId, input, opts))
             } else {
-              await bot.api.sendDocument(chatId, input, opts)
+              await enqueueApiCall(() => bot.api.sendDocument(chatId, input, opts))
             }
           }
 
@@ -641,7 +698,7 @@ function handleParentMessage(msg: IPCMessage): void {
               : text
             const ttsPath = await generateSpeech(ttsText)
             if (ttsPath) {
-              await bot.api.sendVoice(chatId, new InputFile(readFileSync(ttsPath)))
+              await enqueueApiCall(() => bot.api.sendVoice(chatId, new InputFile(readFileSync(ttsPath))))
             }
           }
         } catch (err) {
@@ -676,7 +733,7 @@ function handleParentMessage(msg: IPCMessage): void {
 
     case 'channel:sendVoice': {
       const { chatId, audioPath } = msg.payload as { chatId: string; audioPath: string }
-      void bot.api.sendVoice(chatId, new InputFile(readFileSync(audioPath))).catch(err => {
+      void enqueueApiCall(() => bot.api.sendVoice(chatId, new InputFile(readFileSync(audioPath)))).catch(err => {
         console.error(`telegram worker: failed to send voice: ${err}`)
       })
       break
@@ -684,7 +741,7 @@ function handleParentMessage(msg: IPCMessage): void {
 
     case 'channel:deleteMessage': {
       const { chatId, messageId } = msg.payload as { chatId: string; messageId: string }
-      void bot.api.deleteMessage(chatId, Number(messageId)).catch(err => {
+      void enqueueApiCall(() => bot.api.deleteMessage(chatId, Number(messageId))).catch(err => {
         console.error(`telegram worker: failed to delete message: ${err}`)
       })
       break
@@ -713,7 +770,7 @@ function handleParentMessage(msg: IPCMessage): void {
 
       const htmlText = markdownToTelegramHTML(text)
       const truncated = htmlText.length > 4096 ? htmlText.slice(0, 4093) + '...' : htmlText
-      void bot.api.sendMessage(chatId, truncated, { parse_mode: 'HTML' }).then(sent => {
+      void enqueueApiCall(() => bot.api.sendMessage(chatId, truncated, { parse_mode: 'HTML' })).then(sent => {
         const ids = thinkingMessageIds.get(chatId) ?? []
         ids.push(sent.message_id)
         thinkingMessageIds.set(chatId, ids)
@@ -728,7 +785,7 @@ function handleParentMessage(msg: IPCMessage): void {
       const { chatId } = msg.payload as { chatId: string }
       const ids = thinkingMessageIds.get(chatId) ?? []
       for (const id of ids) {
-        void bot.api.deleteMessage(chatId, id).catch(() => {})
+        void enqueueApiCall(() => bot.api.deleteMessage(chatId, id)).catch(() => {})
       }
       thinkingMessageIds.delete(chatId)
       saveThinkingMessages()
@@ -737,7 +794,7 @@ function handleParentMessage(msg: IPCMessage): void {
 
     case 'session:cwdResponse': {
       const { chatId, cwd } = msg.payload as { chatId: string; cwd: string }
-      void bot.api.sendMessage(chatId, `CWD: <code>${cwd}</code>`, { parse_mode: 'HTML' }).catch(err => {
+      void enqueueApiCall(() => bot.api.sendMessage(chatId, `CWD: <code>${cwd}</code>`, { parse_mode: 'HTML' })).catch(err => {
         console.error(`telegram worker: failed to send CWD response: ${err}`)
       })
       break
@@ -749,7 +806,7 @@ function handleParentMessage(msg: IPCMessage): void {
       if (copied.length) lines.push(`Copied: ${copied.join(', ')}`)
       if (skipped.length) lines.push(`Skipped (already exist): ${skipped.join(', ')}`)
       if (!copied.length && !skipped.length) lines.push('No .md files found to copy.')
-      void bot.api.sendMessage(chatId, lines.join('\n'), { parse_mode: 'HTML' }).catch(err => {
+      void enqueueApiCall(() => bot.api.sendMessage(chatId, lines.join('\n'), { parse_mode: 'HTML' })).catch(err => {
         console.error(`telegram worker: failed to send init response: ${err}`)
       })
       break
@@ -761,7 +818,7 @@ function handleParentMessage(msg: IPCMessage): void {
       const info = AVAILABLE_MODELS.find(m => m.id === effective)
       const display = info ? `${effective} (${info.aliases.join(', ')})` : effective
       const suffix = model === 'default' ? ' [default]' : ''
-      void bot.api.sendMessage(chatId, `Model: <code>${display}${suffix}</code>`, { parse_mode: 'HTML' }).catch(err => {
+      void enqueueApiCall(() => bot.api.sendMessage(chatId, `Model: <code>${display}${suffix}</code>`, { parse_mode: 'HTML' })).catch(err => {
         console.error(`telegram worker: failed to send model response: ${err}`)
       })
       break
@@ -975,7 +1032,7 @@ async function startBot(): Promise<void> {
     }
 
     for (const id of allIds) {
-      void bot.api.deleteMessage(chatId, id).catch(() => {})
+      void enqueueApiCall(() => bot.api.deleteMessage(chatId, id)).catch(() => {})
     }
     thinkingMessageIds.delete(chatId)
     // Remove this chat from persisted file
