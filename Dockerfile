@@ -8,6 +8,15 @@ RUN bun install --frozen-lockfile --production
 
 # Run
 FROM base AS runner
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    python3 \
+    curl \
+    ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json bun.lock ./
 COPY src ./src

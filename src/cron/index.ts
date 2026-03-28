@@ -1,4 +1,6 @@
 import { Cron } from 'croner'
+import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { join } from 'path'
 import type { ETClawConfig, ProviderOptions } from '../types'
 
 /** Function signature for routing a cron query through the process manager. */
@@ -13,8 +15,46 @@ interface CronJob {
   cron?: Cron
 }
 
+/** Serializable cron job for persistence (no Cron instance). */
+interface CronJobDef {
+  name: string
+  schedule: string
+  provider: string
+  prompt: string
+}
+
 const jobs = new Map<string, CronJob>()
 let queryFn: CronQueryFn | undefined
+let persistPath: string | undefined
+
+// ---- Persistence helpers ----
+
+function loadPersistedJobs(): CronJobDef[] {
+  if (!persistPath) return []
+  try {
+    const raw = readFileSync(persistPath, 'utf8')
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function persistJobs(): void {
+  if (!persistPath) return
+  const defs: CronJobDef[] = Array.from(jobs.values()).map(j => ({
+    name: j.name,
+    schedule: j.schedule,
+    provider: j.provider,
+    prompt: j.prompt,
+  }))
+  try {
+    mkdirSync(join(persistPath, '..'), { recursive: true })
+    writeFileSync(persistPath, JSON.stringify(defs, null, 2) + '\n')
+  } catch (err) {
+    console.error(`cron: failed to persist jobs: ${err}`)
+  }
+}
 
 /**
  * Set the query function used by cron jobs to route to providers.
@@ -44,6 +84,7 @@ export function addCronJob(job: CronJob): void {
 
   job.cron = cron
   jobs.set(job.name, job)
+  persistJobs()
   console.error(`cron: scheduled job '${job.name}' (${job.schedule})`)
 }
 
@@ -52,6 +93,7 @@ export function removeCronJob(name: string): void {
   if (job?.cron) {
     job.cron.stop()
     jobs.delete(name)
+    persistJobs()
     console.error(`cron: removed job '${name}'`)
   }
 }
@@ -67,7 +109,23 @@ export function stopAllCronJobs(): void {
   jobs.clear()
 }
 
-/** Initialize cron system. Currently a no-op — jobs are added programmatically. */
-export function initCron(_config: ETClawConfig): void {
-  console.error('cron: initialized')
+/**
+ * Initialize cron system — load persisted jobs from .etclaw/cron.json.
+ * Jobs are restored and scheduled automatically on startup.
+ */
+export function initCron(config: ETClawConfig): void {
+  persistPath = join(config.stateDir, '.etclaw', 'cron.json')
+
+  // Restore persisted jobs
+  const saved = loadPersistedJobs()
+  for (const def of saved) {
+    addCronJob({
+      name: def.name,
+      schedule: def.schedule,
+      provider: def.provider,
+      prompt: def.prompt,
+    })
+  }
+
+  console.error(`cron: initialized (${saved.length} job(s) restored from disk)`)
 }

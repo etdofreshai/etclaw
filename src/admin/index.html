@@ -280,6 +280,7 @@ label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; 
     <button data-page="access">Access</button>
     <button data-page="environment">Environment</button>
     <button data-page="cron">Cron</button>
+    <button data-page="skills">Skills</button>
   </nav>
 
   <main>
@@ -415,6 +416,16 @@ label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; 
         <button class="btn btn-primary" style="margin-top:0.5rem" onclick="addCronJob()">Add Job</button>
       </div>
     </div>
+
+    <!-- ============ SKILLS ============ -->
+    <div id="page-skills" class="page">
+      <div class="card">
+        <h2>Loaded Skills</h2>
+        <p style="color:#888;font-size:0.85rem;margin-bottom:0.75rem">Skills are loaded from <code>skills/</code> directory as <code>.md</code> files. Restart to reload.</p>
+        <div id="skills-list"></div>
+        <div id="skills-empty" style="color:#888;text-align:center;padding:1.5rem;display:none">No skills loaded</div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -517,6 +528,7 @@ function loadCurrentPage() {
   else if (page === 'access') loadAccess();
   else if (page === 'environment') loadEnvironment();
   else if (page === 'cron') loadCron();
+  else if (page === 'skills') loadSkills();
 }
 
 // ---- Auto refresh ----
@@ -984,6 +996,53 @@ async function removeCronJob(name) {
     await post('/api/cron/remove', { name });
     toast(`Cron job '${name}' removed`, 'success');
     loadCron();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- Skills ----
+
+async function loadSkills() {
+  try {
+    const skills = await api('/api/skills');
+    const list = document.getElementById('skills-list');
+    const empty = document.getElementById('skills-empty');
+
+    if (skills.length === 0) {
+      list.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+
+    list.innerHTML = skills.map(s => `
+      <div style="padding:0.75rem 0;border-bottom:1px solid #0f3460">
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <span class="mono" style="font-weight:600;font-size:0.95rem">${esc(s.name)}</span>
+          <span style="color:#888;font-size:0.85rem">${esc(s.description)}</span>
+        </div>
+        <div style="margin-top:0.5rem">
+          <button class="btn btn-sm" onclick="viewSkill('${escAttr(s.name)}')">View Content</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.error('Failed to load skills:', e);
+  }
+}
+
+async function viewSkill(name) {
+  try {
+    const skills = await api('/api/skills');
+    const skill = skills.find(s => s.name === name);
+    if (!skill) { toast('Skill not found', 'error'); return; }
+    openModal(`
+      <h2>Skill: ${esc(skill.name)}</h2>
+      <p style="color:#888;font-size:0.85rem;margin-bottom:0.75rem">${esc(skill.description)}</p>
+      <pre style="background:#1a1a2e;border:1px solid #0f3460;border-radius:5px;padding:0.75rem;font-size:0.8rem;max-height:400px;overflow:auto;white-space:pre-wrap">${esc(skill.content)}</pre>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Close</button>
+      </div>
+    `);
   } catch (e) { toast(e.message, 'error'); }
 }
 

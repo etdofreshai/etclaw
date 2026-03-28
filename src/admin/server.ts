@@ -13,6 +13,7 @@ import type { SessionManager } from '../sessions'
 import type { Access } from '../types'
 import { listManifests, getManifest, validateEnv } from '../manifests'
 import { listCronJobs, addCronJob, removeCronJob } from '../cron'
+import { listSkills } from '../skills'
 
 // ---- Types ----
 
@@ -334,6 +335,17 @@ export function startAdminServer(options: AdminServerOptions): void {
         const m = getManifest(name)
         if (!m) return error('Manifest not found', 404)
         return json({ ...m, validation: validateEnv(name) })
+      }
+
+      // ---- Skills ----
+
+      if (path === '/api/skills' && method === 'GET') {
+        const skills = listSkills()
+        return json(skills.map(s => ({
+          name: s.name,
+          description: s.description,
+          content: s.content,
+        })))
       }
 
       // ---- Cron ----
