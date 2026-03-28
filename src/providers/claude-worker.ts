@@ -127,8 +127,8 @@ async function handleQuery(chatKey: string, prompt: string, options: ProviderOpt
     }
   } catch (err: any) {
     console.error(`claude worker: query error for ${chatKey}: ${err}`)
-    if (err?.stderr) console.error(`claude worker: stderr: ${err.stderr}`)
-    if (err?.exit_code != null) console.error(`claude worker: exit code: ${err.exit_code}`)
+    console.error(`claude worker: error keys: ${Object.keys(err ?? {}).join(', ')}`)
+    console.error(`claude worker: error json: ${JSON.stringify(err, Object.getOwnPropertyNames(err ?? {}))}`)
     // Send an error result so the main process can respond to the channel
     sendToParent({
       type: 'provider:message',

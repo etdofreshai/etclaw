@@ -13,12 +13,17 @@ COPY package.json bun.lock ./
 COPY src ./src
 COPY soul.md ./
 
+# Create non-root user (Claude Code refuses bypassPermissions as root)
+RUN groupadd -r etclaw && useradd -r -g etclaw -d /app etclaw
+
 # Create state and workspace directories
-RUN mkdir -p .etclaw/telegram /workspace
+RUN mkdir -p .etclaw/telegram /workspace && chown -R etclaw:etclaw /app /workspace
 
 # Environment variables (provide at runtime)
 ENV NODE_ENV=production
 ENV STATE_DIR=/workspace
+
+USER etclaw
 
 EXPOSE 9224
 
