@@ -97,6 +97,7 @@ export interface ETClawConfig {
   defaultProvider: string
   defaultCwd: string
   projectDir: string
+  stateDir: string
   soulPrompt: string
   agentsConfig: string
 

@@ -26,11 +26,13 @@ export function loadConfig(): ETClawConfig {
   )
 
   const defaultCwd = process.env.DEFAULT_CWD ?? '/workspace'
+  const stateDir = process.env.STATE_DIR ?? projectDir
 
   return {
     defaultProvider: process.env.DEFAULT_PROVIDER ?? 'claude',
     defaultCwd,
     projectDir,
+    stateDir,
     soulPrompt,
     agentsConfig,
 

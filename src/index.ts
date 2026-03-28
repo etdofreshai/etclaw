@@ -114,6 +114,7 @@ async function main(): Promise<void> {
     pm.spawn('telegram', 'channel', telegramWorkerPath, {
       telegramBotToken: config.telegramBotToken,
       projectDir: config.projectDir,
+      stateDir: config.stateDir,
       openaiApiKey: config.openaiApiKey,
       transcriptionModel: config.transcriptionModel,
       ttsModel: config.ttsModel,
@@ -191,7 +192,7 @@ async function main(): Promise<void> {
 
   const adminPort = parseInt(process.env.ADMIN_PORT ?? '9224', 10)
   const adminPassword = process.env.ADMIN_PASSWORD || undefined
-  const accessFilePath = join(config.projectDir, '.etclaw', 'telegram', 'access.json')
+  const accessFilePath = join(config.stateDir, '.etclaw', 'telegram', 'access.json')
 
   startAdminServer({
     port: adminPort,

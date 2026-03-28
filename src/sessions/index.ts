@@ -7,7 +7,7 @@ export class SessionManager {
   private sessionsDir: string
 
   constructor(private config: ETClawConfig) {
-    this.sessionsDir = join(config.projectDir, '.etclaw')
+    this.sessionsDir = join(config.stateDir, '.etclaw')
     this.sessionsFile = join(this.sessionsDir, 'sessions.json')
   }
 

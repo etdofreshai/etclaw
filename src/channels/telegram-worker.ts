@@ -1026,7 +1026,8 @@ async function startBot(): Promise<void> {
 onParentMessage((msg: IPCMessage) => {
   if (msg.type === 'init') {
     config = msg.config as typeof config
-    stateDir = join(config.projectDir, '.etclaw', 'telegram')
+    const stateRoot = config.stateDir ?? config.projectDir
+    stateDir = join(stateRoot, '.etclaw', 'telegram')
     inboxDir = join(stateDir, 'inbox')
     accessFile = join(stateDir, 'access.json')
     approvedDir = join(stateDir, 'approved')
