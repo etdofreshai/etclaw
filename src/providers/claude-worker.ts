@@ -31,8 +31,7 @@ async function handleQuery(chatKey: string, prompt: string, options: ProviderOpt
   const queryOptions: Record<string, any> = {
     permissionMode: 'bypassPermissions' as const,
     allowDangerouslySkipPermissions: true,
-    strictMcpConfig: true,
-    settingSources: ['user', 'project', 'local'] as const,
+    executable: 'bun' as const,
   }
 
   if (options.sessionId) {

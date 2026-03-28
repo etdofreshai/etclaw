@@ -13,11 +13,12 @@ COPY package.json bun.lock ./
 COPY src ./src
 COPY soul.md ./
 
-# Create state directories
-RUN mkdir -p .etclaw/telegram
+# Create state and workspace directories
+RUN mkdir -p .etclaw/telegram /workspace
 
 # Environment variables (provide at runtime)
 ENV NODE_ENV=production
+ENV STATE_DIR=/workspace
 
 EXPOSE 9224
 
