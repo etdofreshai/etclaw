@@ -26,6 +26,7 @@ const WORKSPACE_FILES = [
   'TOOLS.md',
   'HEARTBEAT.md',
   'MEMORY.md',
+  'BOOTSTRAP.md',
 ]
 
 const BOOTSTRAP_MAX_CHARS = 20_000
