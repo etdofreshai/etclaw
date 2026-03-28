@@ -7,7 +7,7 @@
  */
 
 import { join } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, copyFileSync, readdirSync, mkdirSync } from 'fs'
 import { loadConfig } from './config'
 import { SessionManager } from './sessions'
 import { initSkills } from './skills'
@@ -174,6 +174,35 @@ async function main(): Promise<void> {
           type: 'channel:deleteThinking',
           payload: { chatId },
         })
+      } else if (msg.type === 'session:init') {
+        const { channelType, chatId } = msg.payload as { channelType: string; chatId: string }
+        const session = sessionManager.get(channelType, chatId)
+        const cwd = session?.cwd ?? config.defaultCwd
+
+        // Find all .md files in projectDir
+        const copied: string[] = []
+        const skipped: string[] = []
+        try {
+          const mdFiles = readdirSync(config.projectDir).filter(f => f.endsWith('.md'))
+          mkdirSync(cwd, { recursive: true })
+          for (const file of mdFiles) {
+            const dest = join(cwd, file)
+            if (existsSync(dest)) {
+              skipped.push(file)
+            } else {
+              copyFileSync(join(config.projectDir, file), dest)
+              copied.push(file)
+            }
+          }
+        } catch (err) {
+          console.error(`router: init error: ${err}`)
+        }
+
+        pm.sendTo('telegram', {
+          type: 'session:initResponse',
+          payload: { chatId, copied, skipped, cwd },
+        })
+        console.error(`router: init for ${channelType}:${chatId} — copied: [${copied}], skipped: [${skipped}]`)
       }
     })
     channelCount++

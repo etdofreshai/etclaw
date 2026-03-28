@@ -715,8 +715,20 @@ function handleParentMessage(msg: IPCMessage): void {
 
     case 'session:cwdResponse': {
       const { chatId, cwd } = msg.payload as { chatId: string; cwd: string }
-      void bot.api.sendMessage(chatId, `📂 CWD: <code>${cwd}</code>`, { parse_mode: 'HTML' }).catch(err => {
+      void bot.api.sendMessage(chatId, `CWD: <code>${cwd}</code>`, { parse_mode: 'HTML' }).catch(err => {
         console.error(`telegram worker: failed to send CWD response: ${err}`)
+      })
+      break
+    }
+
+    case 'session:initResponse': {
+      const { chatId, copied, skipped, cwd } = msg.payload as { chatId: string; copied: string[]; skipped: string[]; cwd: string }
+      const lines: string[] = [`Initialized <code>${cwd}</code>`]
+      if (copied.length) lines.push(`Copied: ${copied.join(', ')}`)
+      if (skipped.length) lines.push(`Skipped (already exist): ${skipped.join(', ')}`)
+      if (!copied.length && !skipped.length) lines.push('No .md files found to copy.')
+      void bot.api.sendMessage(chatId, lines.join('\n'), { parse_mode: 'HTML' }).catch(err => {
+        console.error(`telegram worker: failed to send init response: ${err}`)
       })
       break
     }
@@ -732,8 +744,25 @@ async function startBot(): Promise<void> {
   bot = new Bot(config.telegramBotToken)
 
   // Set up commands
+  // /init — copy default MD files to session CWD
+  const handleInit = async (ctx: Context) => {
+    const chatId = String(ctx.chat!.id)
+    sendToParent({
+      type: 'session:init',
+      payload: { channelType: 'telegram', chatId },
+    })
+  }
+
+  bot.command('init', handleInit)
+
   bot.command('start', async ctx => {
-    if (ctx.chat?.type !== 'private') return
+    // In group chats, /start acts as /init
+    if (ctx.chat?.type !== 'private') {
+      await handleInit(ctx)
+      return
+    }
+
+    // In DMs, show pairing instructions and also run init
     const access = loadAccess()
     if (access.dmPolicy === 'disabled') {
       await ctx.reply(`This bot isn't accepting new connections.`)
@@ -746,6 +775,7 @@ async function startBot(): Promise<void> {
       `2. Approve the pairing in ETClaw\n\n` +
       `After that, DMs here reach the AI.`
     )
+    await handleInit(ctx)
   })
 
   bot.command('help', async ctx => {
@@ -753,7 +783,8 @@ async function startBot(): Promise<void> {
     await ctx.reply(
       `Messages you send here route to an AI session. ` +
       `Text and photos are forwarded; replies come back.\n\n` +
-      `/start \u2014 pairing instructions\n` +
+      `/start \u2014 pairing instructions + init workspace\n` +
+      `/init \u2014 copy default .md files to CWD\n` +
       `/status \u2014 check your pairing state\n` +
       `/new \u2014 start a fresh session\n` +
       `/reset \u2014 same as /new\n` +

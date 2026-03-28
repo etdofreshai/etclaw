@@ -143,6 +143,26 @@ export interface SessionInterruptIPC {
   }
 }
 
+/** Initialize workspace — copy default MD files to session CWD. */
+export interface SessionInitIPC {
+  type: 'session:init'
+  payload: {
+    channelType: string
+    chatId: string
+  }
+}
+
+/** Response to session:init with results. */
+export interface SessionInitResponseIPC {
+  type: 'session:initResponse'
+  payload: {
+    chatId: string
+    copied: string[]
+    skipped: string[]
+    cwd: string
+  }
+}
+
 /** Status request/response. */
 export interface ManageStatusIPC {
   type: 'manage:status'
@@ -183,6 +203,8 @@ export type IPCMessage =
   | SessionCwdResponseIPC
   | SessionSetCwdIPC
   | SessionInterruptIPC
+  | SessionInitIPC
+  | SessionInitResponseIPC
   | ManageStatusIPC
   | ManageRestartIPC
   | WorkerReadyIPC
