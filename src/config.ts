@@ -30,6 +30,7 @@ export function loadConfig(): ETClawConfig {
 
   return {
     defaultProvider: process.env.DEFAULT_PROVIDER ?? 'claude',
+    defaultModel: process.env.DEFAULT_MODEL ?? 'claude-opus-4-6',
     defaultCwd,
     projectDir,
     stateDir,

@@ -97,6 +97,7 @@ export interface WorkerManifest {
 
 export interface ETClawConfig {
   defaultProvider: string
+  defaultModel: string
   defaultCwd: string
   projectDir: string
   stateDir: string

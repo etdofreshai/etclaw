@@ -757,10 +757,11 @@ function handleParentMessage(msg: IPCMessage): void {
 
     case 'session:modelResponse': {
       const { chatId, model } = msg.payload as { chatId: string; model: string }
-      // Find display info for the model
-      const info = AVAILABLE_MODELS.find(m => m.id === model)
-      const display = info ? `${model} (${info.aliases.join(', ')})` : model
-      void bot.api.sendMessage(chatId, `Model: <code>${display}</code>`, { parse_mode: 'HTML' }).catch(err => {
+      const effective = model === 'default' ? 'claude-opus-4-6' : model
+      const info = AVAILABLE_MODELS.find(m => m.id === effective)
+      const display = info ? `${effective} (${info.aliases.join(', ')})` : effective
+      const suffix = model === 'default' ? ' [default]' : ''
+      void bot.api.sendMessage(chatId, `Model: <code>${display}${suffix}</code>`, { parse_mode: 'HTML' }).catch(err => {
         console.error(`telegram worker: failed to send model response: ${err}`)
       })
       break

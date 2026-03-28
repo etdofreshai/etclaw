@@ -206,7 +206,7 @@ async function main(): Promise<void> {
       } else if (msg.type === 'session:getModel') {
         const { channelType, chatId } = msg.payload as { channelType: string; chatId: string }
         const session = sessionManager.get(channelType, chatId)
-        const model = session?.model ?? 'default'
+        const model = session?.model ?? config.defaultModel
         pm.sendTo('telegram', {
           type: 'session:modelResponse',
           payload: { chatId, model },
@@ -302,7 +302,7 @@ async function main(): Promise<void> {
           sessionId: session?.sessionId,
           cwd: session?.cwd ?? config.defaultCwd,
           systemPrompt: config.soulPrompt,
-          model: session?.model,
+          model: session?.model ?? config.defaultModel,
         },
       },
     })
