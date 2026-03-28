@@ -23,8 +23,7 @@ RUN mkdir -p .etclaw/telegram /workspace && chown -R etclaw:etclaw /app /workspa
 ENV NODE_ENV=production
 ENV STATE_DIR=/workspace
 
-USER etclaw
-
 EXPOSE 9224
 
-CMD ["bun", "run", "src/index.ts"]
+# Start as root to fix volume permissions, then drop to etclaw
+CMD ["sh", "-c", "chown -R etclaw:etclaw /workspace && exec su -s /bin/sh etclaw -c 'bun run src/index.ts'"]
