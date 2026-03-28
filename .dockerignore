@@ -3,5 +3,4 @@ dist
 .etclaw
 .env
 .git
-*.md
-!soul.md
+README.md
