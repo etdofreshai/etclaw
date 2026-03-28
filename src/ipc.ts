@@ -220,12 +220,18 @@ export function onChildMessage(child: ChildProcess, handler: (msg: IPCMessage) =
   const rl = createInterface({ input: child.stdout })
   rl.on('line', (line: string) => {
     if (!line.trim()) return
+    let msg: IPCMessage
     try {
-      const msg = JSON.parse(line) as IPCMessage
-      handler(msg)
+      msg = JSON.parse(line) as IPCMessage
     } catch (err) {
       // Not JSON — probably a stray console.log from the child. Forward to stderr.
       console.error(`ipc: non-JSON from child: ${line}`)
+      return
+    }
+    try {
+      handler(msg)
+    } catch (err) {
+      console.error(`ipc: handler error: ${err}`)
     }
   })
 }
