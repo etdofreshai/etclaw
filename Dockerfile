@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json bun.lock ./
 COPY src ./src
+COPY .git ./.git
 
 # Create non-root user (Claude Code refuses bypassPermissions as root)
 RUN groupadd -r etclaw && useradd -r -g etclaw -d /app etclaw
@@ -34,10 +35,12 @@ RUN groupadd -r etclaw && useradd -r -g etclaw -d /app etclaw
 # Create state and workspace directories
 RUN mkdir -p .etclaw/telegram /workspace && chown -R etclaw:etclaw /app /workspace
 
-# Build metadata (pass via --build-arg)
-ARG BUILD_SHA=unknown
-ARG BUILD_DATE=unknown
-RUN printf '{"sha":"%s","date":"%s"}\n' "$BUILD_SHA" "$BUILD_DATE" > /app/build.json
+# Extract build metadata from git, then remove .git to keep image small
+RUN printf '{"sha":"%s","date":"%s"}\n' \
+      "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
+      "$(git log -1 --format=%ci HEAD 2>/dev/null | cut -d' ' -f1 || echo unknown)" \
+    > /app/build.json \
+  && rm -rf .git
 
 # Environment variables (provide at runtime)
 ENV NODE_ENV=production

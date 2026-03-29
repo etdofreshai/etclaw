@@ -2,5 +2,4 @@ node_modules
 dist
 .etclaw
 .env
-.git
 README.md
