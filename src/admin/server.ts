@@ -24,6 +24,8 @@ interface AdminServerOptions {
   sessionManager: SessionManager
   accessFilePath: string
   globalEnv: Record<string, string>
+  defaultCwd: string
+  soulPrompt: string
 }
 
 // ---- Session tokens (cookie-based auth) ----
@@ -66,6 +68,38 @@ function saveAccess(path: string, access: Access): void {
   writeFileSync(path, JSON.stringify(access, null, 2) + '\n')
 }
 
+// ---- System prompt builder (mirrors claude-worker.ts logic) ----
+
+const WORKSPACE_FILES = [
+  'SOUL.md', 'IDENTITY.md', 'USER.md', 'AGENTS.md',
+  'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md', 'BOOTSTRAP.md',
+]
+
+const PROMPT_MAX_CHARS = 20_000
+
+function readPromptFile(path: string): string {
+  try {
+    const content = readFileSync(path, 'utf8').trim()
+    if (content.length > PROMPT_MAX_CHARS) {
+      return content.slice(0, PROMPT_MAX_CHARS) + '\n\n[... truncated ...]'
+    }
+    return content
+  } catch {
+    return ''
+  }
+}
+
+function buildSystemPrompt(cwd: string, basePrompt?: string): string {
+  const sections: string[] = []
+  if (basePrompt) sections.push(basePrompt)
+  sections.push('# Project Context\n\nThe following workspace files define your identity, behavior, and memory.')
+  for (const file of WORKSPACE_FILES) {
+    const content = readPromptFile(join(cwd, file))
+    if (content) sections.push(`## ${file}\n\n${content}`)
+  }
+  return sections.join('\n\n---\n\n')
+}
+
 // ---- Helpers ----
 
 function json(data: unknown, status = 200, headers?: Record<string, string>): Response {
@@ -96,7 +130,7 @@ try {
 }
 
 export function startAdminServer(options: AdminServerOptions): void {
-  const { port, password, processManager, sessionManager, accessFilePath, globalEnv } = options
+  const { port, password, processManager, sessionManager, accessFilePath, globalEnv, defaultCwd, soulPrompt } = options
 
   // Load the HTML file once at startup
   const htmlPath = join(import.meta.dir, 'index.html')
@@ -389,6 +423,13 @@ export function startAdminServer(options: AdminServerOptions): void {
         if (!body.name) return error('Missing name')
         removeCronJob(body.name)
         return json({ ok: true, message: `Cron job '${body.name}' removed` })
+      }
+
+      // ---- System Prompt ----
+
+      if (path === '/api/system-prompt' && method === 'GET') {
+        const prompt = buildSystemPrompt(defaultCwd, soulPrompt)
+        return json({ prompt, cwd: defaultCwd })
       }
 
       // ---- Fallback ----

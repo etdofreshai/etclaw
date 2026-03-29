@@ -261,6 +261,8 @@ async function main(): Promise<void> {
     sessionManager,
     accessFilePath,
     globalEnv: pm.getGlobalEnv(),
+    defaultCwd: config.defaultCwd,
+    soulPrompt: config.soulPrompt,
   })
 
   // ---- Message routing ----

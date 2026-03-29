@@ -282,6 +282,7 @@ label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; 
     <button data-page="environment">Environment</button>
     <button data-page="cron">Cron</button>
     <button data-page="skills">Skills</button>
+    <button data-page="system-prompt">System Prompt</button>
   </nav>
 
   <main>
@@ -427,6 +428,22 @@ label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; 
         <div id="skills-empty" style="color:#888;text-align:center;padding:1.5rem;display:none">No skills loaded</div>
       </div>
     </div>
+
+    <!-- ============ SYSTEM PROMPT ============ -->
+    <div id="page-system-prompt" class="page">
+      <div class="card">
+        <h2>System Prompt</h2>
+        <p style="color:#888;font-size:0.85rem;margin-bottom:0.75rem">
+          The full system prompt sent to the AI provider, built from workspace files in <code id="prompt-cwd"></code>
+        </p>
+        <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+          <button class="btn btn-sm" onclick="loadSystemPrompt()">Refresh</button>
+          <button class="btn btn-sm" onclick="copySystemPrompt()">Copy to Clipboard</button>
+          <span id="prompt-stats" class="mono" style="font-size:0.8rem;color:#888;align-self:center"></span>
+        </div>
+        <pre id="system-prompt-content" style="background:#1a1a2e;border:1px solid #0f3460;border-radius:5px;padding:0.75rem;font-size:0.8rem;max-height:600px;overflow:auto;white-space:pre-wrap;word-wrap:break-word"></pre>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -531,6 +548,7 @@ function loadCurrentPage() {
   else if (page === 'environment') loadEnvironment();
   else if (page === 'cron') loadCron();
   else if (page === 'skills') loadSkills();
+  else if (page === 'system-prompt') loadSystemPrompt();
 }
 
 // ---- Auto refresh ----
@@ -1062,6 +1080,38 @@ async function viewSkill(name) {
       </div>
     `);
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ---- System Prompt ----
+
+let cachedPrompt = '';
+
+async function loadSystemPrompt() {
+  try {
+    const data = await api('/api/system-prompt');
+    cachedPrompt = data.prompt || '';
+    document.getElementById('system-prompt-content').textContent = cachedPrompt;
+    document.getElementById('prompt-cwd').textContent = data.cwd || '';
+
+    // Estimate token count (~4 chars per token)
+    const chars = cachedPrompt.length;
+    const approxTokens = Math.round(chars / 4);
+    document.getElementById('prompt-stats').textContent =
+      `${chars.toLocaleString()} chars · ~${approxTokens.toLocaleString()} tokens`;
+  } catch (e) {
+    console.error('Failed to load system prompt:', e);
+    document.getElementById('system-prompt-content').textContent = 'Error loading system prompt';
+  }
+}
+
+async function copySystemPrompt() {
+  if (!cachedPrompt) await loadSystemPrompt();
+  try {
+    await navigator.clipboard.writeText(cachedPrompt);
+    toast('Copied to clipboard');
+  } catch (e) {
+    toast('Failed to copy', 'error');
+  }
 }
 
 // ---- Modal ----
