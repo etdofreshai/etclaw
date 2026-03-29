@@ -89,6 +89,48 @@ function readPromptFile(path: string): string {
   }
 }
 
+const SCHEDULING_INSTRUCTIONS = `# Scheduling & Cron Jobs
+
+You can schedule recurring tasks using cron jobs. Jobs are persisted in \`.etclaw/cron.json\` and survive restarts.
+
+## How to schedule a task
+
+Write to \`.etclaw/cron.json\` in the workspace state directory. The file is a JSON array of job definitions:
+
+\`\`\`json
+[
+  {
+    "name": "daily-summary",
+    "schedule": "0 9 * * *",
+    "provider": "claude",
+    "prompt": "Check my emails and give me a morning summary"
+  }
+]
+\`\`\`
+
+Each job has:
+- **name** — unique identifier for the job
+- **schedule** — cron expression (e.g. \`0 9 * * *\` = 9 AM daily, \`*/30 * * * *\` = every 30 min, \`0 */4 * * *\` = every 4 hours)
+- **provider** — which AI provider to use (usually \`claude\`)
+- **prompt** — the task to execute when the job fires
+
+## Common cron patterns
+- \`* * * * *\` — every minute
+- \`*/5 * * * *\` — every 5 minutes
+- \`0 * * * *\` — every hour
+- \`0 9 * * *\` — daily at 9 AM
+- \`0 9 * * 1-5\` — weekdays at 9 AM
+- \`0 9,18 * * *\` — at 9 AM and 6 PM
+- \`0 0 * * 0\` — weekly on Sunday at midnight
+
+## Important notes
+- The cron system reads from \`.etclaw/cron.json\` on startup and watches for changes.
+- To add a job: read the current file, append your job, and write it back.
+- To remove a job: read the file, filter out the job by name, and write it back.
+- Always use valid JSON. If the file doesn't exist yet, create it with an array containing your job.
+- The \`.etclaw/\` directory is the persistent state directory — it survives workspace resets.
+`
+
 function buildSystemPrompt(cwd: string, basePrompt?: string): string {
   const sections: string[] = []
   if (basePrompt) sections.push(basePrompt)
@@ -97,6 +139,8 @@ function buildSystemPrompt(cwd: string, basePrompt?: string): string {
     const content = readPromptFile(join(cwd, file))
     if (content) sections.push(`## ${file}\n\n${content}`)
   }
+  // Always include scheduling instructions (mirrors claude-worker.ts)
+  sections.push(SCHEDULING_INSTRUCTIONS)
   return sections.join('\n\n---\n\n')
 }
 
