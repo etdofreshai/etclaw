@@ -648,16 +648,6 @@ function handleParentMessage(msg: IPCMessage): void {
         typingIntervals.delete(chatId)
       }
 
-      // Optionally delete thinking messages
-      if (config.deleteThinkingAfterResponse) {
-        const ids = thinkingMessageIds.get(chatId) ?? []
-        for (const id of ids) {
-          void enqueueApiCall(() => bot.api.deleteMessage(chatId, id)).catch(() => {})
-        }
-        thinkingMessageIds.delete(chatId)
-        saveThinkingMessages()
-      }
-
       const ctx = messageContexts.get(chatId)
       const access = ctx?.access ?? loadAccess()
       const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
@@ -669,6 +659,7 @@ function handleParentMessage(msg: IPCMessage): void {
 
       void (async () => {
         try {
+          // Send response text FIRST (before deleting thinking messages)
           for (let i = 0; i < chunks.length; i++) {
             await enqueueApiCall(() => bot.api.sendMessage(chatId, chunks[i], {
               parse_mode: 'HTML' as const,
@@ -700,6 +691,16 @@ function handleParentMessage(msg: IPCMessage): void {
             if (ttsPath) {
               await enqueueApiCall(() => bot.api.sendVoice(chatId, new InputFile(readFileSync(ttsPath))))
             }
+          }
+
+          // Delete thinking messages AFTER response is sent (fire-and-forget)
+          if (config.deleteThinkingAfterResponse) {
+            const ids = thinkingMessageIds.get(chatId) ?? []
+            for (const id of ids) {
+              void enqueueApiCall(() => bot.api.deleteMessage(chatId, id)).catch(() => {})
+            }
+            thinkingMessageIds.delete(chatId)
+            saveThinkingMessages()
           }
         } catch (err) {
           console.error(`telegram worker: failed to send response: ${err}`)
