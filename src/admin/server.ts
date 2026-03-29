@@ -135,19 +135,21 @@ Each job has:
 function loadSkillSections(skillsDir: string): string {
   if (!existsSync(skillsDir)) return ''
 
-  const skills: { name: string; description: string; content: string }[] = []
+  const skills: { name: string; description: string; path: string }[] = []
 
   try {
     const entries = readdirSync(skillsDir, { withFileTypes: true })
     for (const entry of entries) {
       let raw: string
+      let filePath: string
 
       if (entry.isFile() && entry.name.endsWith('.md')) {
-        raw = readPromptFile(join(skillsDir, entry.name))
+        filePath = join(skillsDir, entry.name)
+        raw = readPromptFile(filePath)
       } else if (entry.isDirectory()) {
-        const skillPath = join(skillsDir, entry.name, 'SKILL.md')
-        if (!existsSync(skillPath)) continue
-        raw = readPromptFile(skillPath)
+        filePath = join(skillsDir, entry.name, 'SKILL.md')
+        if (!existsSync(filePath)) continue
+        raw = readPromptFile(filePath)
       } else {
         continue
       }
@@ -156,19 +158,17 @@ function loadSkillSections(skillsDir: string): string {
 
       let name = entry.name.replace(/\.md$/, '')
       let description = name
-      let content = raw
 
       const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
       if (fmMatch) {
         const fm = fmMatch[1]
-        content = fmMatch[2].trim()
         const nameMatch = fm.match(/^name:\s*(.+)$/m)
         const descMatch = fm.match(/^description:\s*(.+)$/m)
         if (nameMatch) name = nameMatch[1].trim()
         if (descMatch) description = descMatch[1].trim()
       }
 
-      skills.push({ name, description, content })
+      skills.push({ name, description, path: filePath })
     }
   } catch {
     // ignore
@@ -177,8 +177,9 @@ function loadSkillSections(skillsDir: string): string {
   if (skills.length === 0) return ''
 
   const lines = ['# Available Skills\n']
+  lines.push('Read the SKILL.md file for full instructions when you need to use a skill.\n')
   for (const s of skills) {
-    lines.push(`## ${s.name}\n**${s.description}**\n\n${s.content}\n`)
+    lines.push(`- **${s.name}** — ${s.description} → \`${s.path}\``)
   }
   return lines.join('\n')
 }
