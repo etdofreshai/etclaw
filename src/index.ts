@@ -11,7 +11,7 @@ import { existsSync, copyFileSync, readdirSync, mkdirSync } from 'fs'
 import { loadConfig } from './config'
 import { SessionManager } from './sessions'
 import { initSkills } from './skills'
-import { initCron, stopAllCronJobs } from './cron'
+import { initCron, stopAllCronJobs, setCronQueryFn } from './cron'
 import { ProcessManager } from './process-manager'
 import { startAdminServer } from './admin/server'
 import type { IPCMessage, ProviderMessageIPC, ChannelMessageIPC } from './ipc'
@@ -274,6 +274,107 @@ async function main(): Promise<void> {
   }
 
   console.error(`ETClaw running with ${channelCount} channel(s)`)
+
+  // ---- Wire up cron query function ----
+
+  /** ET's Telegram DM chat ID — cron results are sent here. */
+  const CRON_CHAT_ID = process.env.CRON_CHAT_ID || '8380310914'
+
+  setCronQueryFn(async (provider, prompt, options) => {
+    return new Promise<string | undefined>((resolve) => {
+      const cronId = `cron:${Date.now()}`
+      const cronSessionKey = cronId
+
+      // Create a temporary session entry for the cron job
+      const cronSession: SessionEntry = {
+        provider,
+        name: 'cron',
+        cwd: options?.cwd ?? config.defaultCwd,
+        model: options?.model ?? config.defaultModel,
+        sessionId: options?.sessionId,
+      }
+
+      // Override handleProviderIPC for this cron worker to capture the result
+      const workerName = `provider:${cronSessionKey}`
+      const cronPrompt = `[System: This is an automated cron job. Send your response to ET via Telegram.]\n\n${prompt}`
+
+      // Set up result capture before spawning
+      const cronResultHandler = (msg: IPCMessage) => {
+        if (msg.type === 'provider:message') {
+          const provMsg = msg as ProviderMessageIPC
+          const { chatKey, message } = provMsg.payload
+
+          if (chatKey !== cronSessionKey) return
+
+          if (message.type === 'result') {
+            let text = message.content ?? ''
+
+            // Extract file markers
+            const fileMarkerRegex = /\{\{file:([^}]+)\}\}/g
+            const files: string[] = []
+            let match: RegExpExecArray | null
+            while ((match = fileMarkerRegex.exec(text)) !== null) {
+              files.push(match[1].trim())
+            }
+            text = text.replace(fileMarkerRegex, '').trim()
+
+            // Send to Telegram
+            if ((text || files.length > 0) && pm.has('telegram')) {
+              pm.sendTo('telegram', {
+                type: 'channel:send',
+                payload: {
+                  chatId: CRON_CHAT_ID,
+                  text: text || '',
+                  options: files.length > 0 ? { files } : undefined,
+                },
+              })
+            }
+
+            // Clean up
+            killProviderForSession(cronSessionKey)
+            resolve(text || undefined)
+          }
+        }
+      }
+
+      // Spawn provider worker with our custom handler
+      const providerType = provider ?? config.defaultProvider
+      const workerPath = getWorkerPathForProvider(providerType)
+      pm.spawn(workerName, 'provider', workerPath, {
+        defaultProvider: providerType,
+        projectDir: config.projectDir,
+        soulPrompt: config.soulPrompt,
+      }, cronResultHandler, {}, cronSession.cwd ?? config.defaultCwd)
+
+      console.error(`cron: spawned provider ${workerName}`)
+
+      // Send the query
+      pm.sendTo(workerName, {
+        type: 'provider:query',
+        payload: {
+          chatKey: cronSessionKey,
+          prompt: cronPrompt,
+          options: {
+            sessionId: cronSession.sessionId,
+            cwd: cronSession.cwd ?? config.defaultCwd,
+            systemPrompt: config.soulPrompt,
+            model: cronSession.model,
+          },
+        },
+      })
+
+      // Safety timeout — don't let cron jobs hang forever (5 minutes)
+      setTimeout(() => {
+        if (pm.has(workerName)) {
+          console.error(`cron: timeout for ${cronId}, killing provider`)
+          killProviderForSession(cronSessionKey)
+          resolve(undefined)
+        }
+      }, 5 * 60 * 1000)
+    })
+  })
+
+  console.error('cron: query function wired up')
 
   // ---- Admin panel ----
 
