@@ -490,6 +490,19 @@ function toast(message, type = 'info') {
 async function checkAuth() {
   const data = await api('/api/auth/check');
   if (data.passwordRequired && !data.authenticated) {
+    // Try auto-login from localStorage
+    const saved = localStorage.getItem('etclaw_admin_pw');
+    if (saved) {
+      try {
+        await post('/api/auth/login', { password: saved });
+        document.getElementById('login-page').style.display = 'none';
+        document.getElementById('app').style.display = '';
+        return true;
+      } catch {
+        // Saved password is stale — clear it and show login
+        localStorage.removeItem('etclaw_admin_pw');
+      }
+    }
     document.getElementById('login-page').style.display = '';
     document.getElementById('app').style.display = 'none';
     return false;
@@ -503,6 +516,7 @@ async function doLogin() {
   const pw = document.getElementById('login-password').value;
   try {
     await post('/api/auth/login', { password: pw });
+    localStorage.setItem('etclaw_admin_pw', pw);
     document.getElementById('login-error').style.display = 'none';
     await checkAuth();
     startAutoRefresh();
