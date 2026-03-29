@@ -14,6 +14,16 @@ if (!ZAI_TOKEN) {
   process.exit(1)
 }
 
+// Set these on the WORKER PROCESS itself — the SDK reads process.env for
+// model resolution and auth decisions BEFORE spawning the subprocess.
+// queryOptions.env only reaches the subprocess, not the SDK's own logic.
+process.env.CLAUDE_CODE_SIMPLE = 'true'
+process.env.ANTHROPIC_API_KEY = ZAI_TOKEN
+process.env.ANTHROPIC_BASE_URL = 'https://api.z.ai/api/anthropic'
+process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = 'glm-5.1'
+process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'glm-5.1'
+process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = 'glm-5.1'
+
 createWorker({
   name: 'zai',
   envOverrides: {
