@@ -60,6 +60,12 @@ async function main(): Promise<void> {
   const idleTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const IDLE_TIMEOUT = parseInt(process.env.PROVIDER_IDLE_TIMEOUT ?? '600000', 10)
 
+  /** Tracks sessions that just switched model/provider — next message gets an injection. */
+  const pendingModelSwitches = new Map<string, { model: string; provider: string }>()
+
+  // Track pending model-switch notices to inject into the next user message
+  const pendingModelNotices = new Map<string, string>()
+
   /** Resolve the worker .ts file for a given provider name. */
   function getWorkerPathForProvider(provider: string): string {
     // Currently only 'claude' is supported; extend here for future providers
@@ -237,6 +243,7 @@ async function main(): Promise<void> {
         if (session) {
           session.model = model
           session.provider = resolvedProvider
+          session.sessionId = undefined  // fresh session for new provider
           sessionManager.set(channelType, chatId, session)
         } else {
           sessionManager.set(channelType, chatId, {
@@ -248,6 +255,8 @@ async function main(): Promise<void> {
         // Kill existing provider so it respawns with correct provider type + model
         const sessionKey = `${channelType}:${chatId}`
         killProviderForSession(sessionKey)
+        // Record pending switch so next message gets a context injection
+        pendingModelSwitches.set(sessionKey, { model, provider: resolvedProvider })
         pm.sendTo('telegram', {
           type: 'session:modelResponse',
           payload: { chatId, model },
@@ -301,7 +310,16 @@ async function main(): Promise<void> {
 
     // Build prompt with context
     const chatName = incoming.chatTitle ?? incoming.chatId
-    let prompt = `[Telegram chat: ${chatName}]\n${incoming.userName}: ${incoming.text}`
+    let prompt = ''
+
+    // Inject model switch context if this is the first message after a switch
+    const switchInfo = pendingModelSwitches.get(chatKey)
+    if (switchInfo) {
+      prompt += `[System: Model switched to ${switchInfo.model} (provider: ${switchInfo.provider}). This is a fresh session.]\n\n`
+      pendingModelSwitches.delete(chatKey)
+    }
+
+    prompt += `[Telegram chat: ${chatName}]\n${incoming.userName}: ${incoming.text}`
     if (incoming.imagePath) {
       prompt += `\n\n[Image attached at: ${incoming.imagePath} — use the Read tool to view it]`
     }
