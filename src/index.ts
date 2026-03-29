@@ -17,6 +17,19 @@ import { startAdminServer } from './admin/server'
 import type { IPCMessage, ProviderMessageIPC, ChannelMessageIPC } from './ipc'
 import type { IncomingMessage, ProviderMessage, SessionEntry } from './types'
 
+/**
+ * Map model names to their provider. Models not listed here use the default provider.
+ */
+const MODEL_TO_PROVIDER: Record<string, string> = {
+  'glm-5.1': 'zai',
+}
+
+/** Resolve which provider should handle a given model name. */
+function providerForModel(model: string | undefined, defaultProvider: string): string {
+  if (!model) return defaultProvider
+  return MODEL_TO_PROVIDER[model] ?? defaultProvider
+}
+
 async function main(): Promise<void> {
   console.error('ETClaw starting...')
 
@@ -78,7 +91,7 @@ async function main(): Promise<void> {
 
     // Spawn if not already running
     if (!pm.has(workerName)) {
-      const providerType = session?.provider ?? config.defaultProvider
+      const providerType = session?.provider ?? providerForModel(session?.model, config.defaultProvider)
       const workerPath = getWorkerPathForProvider(providerType)
       const perSessionEnv = session?.env ?? {}
       const rawCwd = session?.cwd ?? config.defaultCwd
@@ -219,18 +232,20 @@ async function main(): Promise<void> {
         })
       } else if (msg.type === 'session:setModel') {
         const { channelType, chatId, model } = msg.payload as { channelType: string; chatId: string; model: string }
+        const resolvedProvider = providerForModel(model, config.defaultProvider)
         const session = sessionManager.get(channelType, chatId)
         if (session) {
           session.model = model
+          session.provider = resolvedProvider
           sessionManager.set(channelType, chatId, session)
         } else {
           sessionManager.set(channelType, chatId, {
-            provider: config.defaultProvider,
+            provider: resolvedProvider,
             name: chatId,
             model,
           })
         }
-        // Kill existing provider so it picks up new model on next message
+        // Kill existing provider so it respawns with correct provider type + model
         const sessionKey = `${channelType}:${chatId}`
         killProviderForSession(sessionKey)
         pm.sendTo('telegram', {
