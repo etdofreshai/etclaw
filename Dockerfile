@@ -39,7 +39,7 @@ RUN mkdir -p .etclaw/telegram /workspace && chown -R etclaw:etclaw /app /workspa
 # Extract build metadata from git, then remove .git to keep image small
 RUN git config --global --add safe.directory /app \
   && SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
-  && DATE=$(TZ='America/Chicago' git log -1 --format=%cd --date=format:'%B %d, %Y %l:%M %p CT' HEAD 2>/dev/null || echo "unknown") \
+  && DATE=$(git log -1 --format=%cd --date=iso-strict HEAD 2>/dev/null || echo "unknown") \
   && printf '{"sha":"%s","date":"%s"}\n' "$SHA" "${DATE:-unknown}" > /app/build.json \
   && rm -rf .git
 

@@ -555,7 +555,16 @@ async function loadDashboard() {
     // Build info
     if (data.buildSha && data.buildSha !== 'dev' && data.buildSha !== 'unknown') {
       const shortSha = data.buildSha.substring(0, 7);
-      const dateStr = data.buildDate !== 'unknown' ? data.buildDate : '';
+      let dateStr = '';
+      if (data.buildDate && data.buildDate !== 'unknown') {
+        try {
+          dateStr = new Date(data.buildDate).toLocaleString('en-US', {
+            timeZone: 'America/Chicago',
+            month: 'long', day: 'numeric', year: 'numeric',
+            hour: 'numeric', minute: '2-digit', hour12: true,
+          }) + ' CT';
+        } catch { dateStr = data.buildDate; }
+      }
       document.getElementById('build-info').textContent = dateStr ? `${dateStr} · ${shortSha}` : shortSha;
     }
 
