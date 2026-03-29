@@ -45,4 +45,6 @@ createWorker({
   // Don't pass model directly to the SDK — it validates against known Claude models.
   // The ANTHROPIC_DEFAULT_*_MODEL env vars handle model selection internally.
   skipModelPassthrough: true,
+  // GLM-5.1 vision is unreliable — use Haiku to describe images first
+  describeImagesWithHaiku: true,
 })

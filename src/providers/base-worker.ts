@@ -189,6 +189,12 @@ export interface WorkerOptions {
    * Use this to inject provider-specific instructions, identity, or constraints.
    */
   systemPromptSuffix?: string
+  /**
+   * If true, images are described by Claude Haiku first, and the text description
+   * is sent to the provider instead of raw image data. Useful for providers with
+   * weak or no vision capabilities.
+   */
+  describeImagesWithHaiku?: boolean
 }
 
 // ---- Image helpers ----
@@ -196,6 +202,79 @@ export interface WorkerOptions {
 const MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
   '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+}
+
+/**
+ * Describe images using Claude Haiku via the Anthropic API.
+ * Returns a text description for each image path.
+ */
+async function describeImagesWithHaiku(imagePaths: string[]): Promise<string> {
+  // Try dedicated Haiku key first, then OAuth token, then main API key
+  const haikuKey = process.env.ANTHROPIC_API_KEY_FOR_HAIKU
+  const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN
+  if (!haikuKey && !oauthToken) {
+    console.error('base-worker: no API key available for Haiku image description')
+    return imagePaths.map(p => `[Image: ${p} — could not describe, no API key]`).join('\n')
+  }
+  // Use API key header for regular keys, Authorization header for OAuth tokens
+  const authHeaders: Record<string, string> = haikuKey
+    ? { 'x-api-key': haikuKey }
+    : { 'Authorization': `Bearer ${oauthToken}` }
+
+  const descriptions: string[] = []
+  for (const imgPath of imagePaths) {
+    try {
+      const data = readFileSync(imgPath)
+      const ext = extname(imgPath).toLowerCase()
+      const mediaType = MIME_TYPES[ext] ?? 'image/jpeg'
+      const base64Data = data.toString('base64')
+
+      console.error(`base-worker: describing image with Haiku: ${imgPath} (${(data.length / 1024).toFixed(0)}KB)`)
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-20250414',
+          max_tokens: 1000,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: mediaType, data: base64Data },
+              },
+              {
+                type: 'text',
+                text: 'Describe this image in detail. Include all visible text, UI elements, colors, objects, people, and any other relevant details. Be thorough but concise.',
+              },
+            ],
+          }],
+        }),
+      })
+
+      if (!res.ok) {
+        const errText = await res.text()
+        console.error(`base-worker: Haiku vision failed (${res.status}): ${errText}`)
+        descriptions.push(`[Image: ${imgPath} — Haiku description failed: ${res.status}]`)
+        continue
+      }
+
+      const result = await res.json() as any
+      const text = result.content?.[0]?.text ?? '(no description)'
+      console.error(`base-worker: Haiku described image in ${text.length} chars`)
+      descriptions.push(`[Image description (via Haiku vision):\n${text}\n]`)
+    } catch (err) {
+      console.error(`base-worker: Haiku image description error for ${imgPath}: ${err}`)
+      descriptions.push(`[Image: ${imgPath} — description error]`)
+    }
+  }
+
+  return descriptions.join('\n\n')
 }
 
 /** Build a multimodal SDKUserMessage with text + inline base64 images. */
@@ -280,14 +359,22 @@ async function handleQuery(
     ...workerOpts.envOverrides,
   }
 
-  // Build prompt: use multimodal SDKUserMessage if images are attached,
-  // otherwise use plain string
+  // Build prompt: handle images based on provider capabilities
   const hasImages = options.imagePaths && options.imagePaths.length > 0
-  const promptInput: string | AsyncIterable<SDKUserMessage> = hasImages
-    ? (async function* () {
-        yield buildMultimodalMessage(prompt, options.imagePaths!)
-      })()
-    : prompt
+  let promptInput: string | AsyncIterable<SDKUserMessage>
+
+  if (hasImages && workerOpts.describeImagesWithHaiku) {
+    // Provider has weak vision — describe images with Haiku first, send text to provider
+    const imageDesc = await describeImagesWithHaiku(options.imagePaths!)
+    promptInput = `${prompt}\n\n${imageDesc}`
+  } else if (hasImages) {
+    // Provider supports vision — send images inline as base64
+    promptInput = (async function* () {
+      yield buildMultimodalMessage(prompt, options.imagePaths!)
+    })()
+  } else {
+    promptInput = prompt
+  }
 
   try {
     for await (const msg of query({ prompt: promptInput, options: queryOptions })) {
