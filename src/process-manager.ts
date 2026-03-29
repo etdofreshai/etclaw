@@ -4,6 +4,8 @@
 
 import { spawn, type ChildProcess } from 'child_process'
 import { createInterface } from 'readline'
+import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { dirname } from 'path'
 import { sendToChild, onChildMessage, type IPCMessage } from './ipc'
 
 export interface ProcessEntry {
@@ -22,8 +24,39 @@ export class ProcessManager {
   private processes = new Map<string, ProcessEntry>()
   private messageHandlers = new Map<string, Array<(msg: IPCMessage) => void>>()
   private globalEnv: Record<string, string> = {}
+  private globalEnvPath: string | null = null
   private maxRestarts = 5
   private restartDelay = 2000
+
+  /**
+   * Initialize persistent global env from a file path.
+   * Loads existing values from disk if the file exists.
+   */
+  initGlobalEnvPath(filePath: string): void {
+    this.globalEnvPath = filePath
+    try {
+      const data = JSON.parse(readFileSync(filePath, 'utf8'))
+      if (data && typeof data === 'object') {
+        this.globalEnv = data
+        console.error(`process-manager: loaded ${Object.keys(data).length} global env var(s) from ${filePath}`)
+      }
+    } catch {
+      // File doesn't exist yet — that's fine
+    }
+  }
+
+  /**
+   * Persist global env to disk.
+   */
+  private saveGlobalEnv(): void {
+    if (!this.globalEnvPath) return
+    try {
+      mkdirSync(dirname(this.globalEnvPath), { recursive: true })
+      writeFileSync(this.globalEnvPath, JSON.stringify(this.globalEnv, null, 2) + '\n')
+    } catch (err) {
+      console.error(`process-manager: failed to save global env: ${err}`)
+    }
+  }
 
   /**
    * Set global environment variables passed to ALL child processes.
@@ -31,6 +64,7 @@ export class ProcessManager {
    */
   setGlobalEnv(env: Record<string, string>): void {
     this.globalEnv = { ...this.globalEnv, ...env }
+    this.saveGlobalEnv()
   }
 
   /**

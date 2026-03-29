@@ -34,6 +34,12 @@ RUN groupadd -r etclaw && useradd -r -g etclaw -d /app etclaw
 # Create state and workspace directories
 RUN mkdir -p .etclaw/telegram /workspace && chown -R etclaw:etclaw /app /workspace
 
+# Build metadata (pass via --build-arg)
+ARG BUILD_SHA=unknown
+ARG BUILD_DATE=unknown
+ENV BUILD_SHA=${BUILD_SHA}
+ENV BUILD_DATE=${BUILD_DATE}
+
 # Environment variables (provide at runtime)
 ENV NODE_ENV=production
 ENV STATE_DIR=/workspace

@@ -270,6 +270,7 @@ label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; 
       <h1>ETClaw</h1>
       <span class="subtitle">Admin Panel</span>
     </div>
+    <span id="build-info" class="mono" style="font-size:0.75rem;color:#666"></span>
     <span id="uptime-badge" class="mono" style="font-size:0.8rem;color:#888"></span>
   </header>
 
@@ -550,6 +551,13 @@ async function loadDashboard() {
     document.getElementById('stat-workers').textContent = data.workerCount;
     document.getElementById('stat-sessions').textContent = data.sessionCount;
     document.getElementById('uptime-badge').textContent = data.uptimeHuman;
+
+    // Build info
+    if (data.buildSha && data.buildSha !== 'dev' && data.buildSha !== 'unknown') {
+      const shortSha = data.buildSha.substring(0, 7);
+      const dateStr = data.buildDate !== 'unknown' ? data.buildDate : '';
+      document.getElementById('build-info').textContent = dateStr ? `${dateStr} · ${shortSha}` : shortSha;
+    }
 
     const tbody = document.getElementById('dash-workers');
     tbody.innerHTML = data.workers.map(w => `

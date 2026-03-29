@@ -36,6 +36,7 @@ async function main(): Promise<void> {
 
   // Create process manager
   const pm = new ProcessManager()
+  pm.initGlobalEnvPath(join(config.stateDir, '.etclaw', 'global.env'))
 
   // ---- Per-session provider worker management ----
 

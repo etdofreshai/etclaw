@@ -153,6 +153,8 @@ export function startAdminServer(options: AdminServerOptions): void {
           workers,
           workerCount: workers.length,
           sessionCount: Object.keys(sessions).length,
+          buildSha: process.env.BUILD_SHA ?? 'dev',
+          buildDate: process.env.BUILD_DATE ?? 'unknown',
         })
       }
 
