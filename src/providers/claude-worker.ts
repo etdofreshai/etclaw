@@ -9,7 +9,7 @@
  */
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { readFileSync } from 'fs'
+import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { onParentMessage, sendToParent, type IPCMessage } from '../ipc'
 import type { ProviderOptions } from '../types'
@@ -87,6 +87,59 @@ Each job has:
 - The \`.etclaw/\` directory is the persistent state directory — it survives workspace resets.
 `
 
+/** Load skills from a directory (flat .md files or subdirs with SKILL.md). */
+function loadSkillSections(skillsDir: string): string {
+  if (!existsSync(skillsDir)) return ''
+
+  const skills: { name: string; description: string; content: string }[] = []
+
+  try {
+    const entries = readdirSync(skillsDir, { withFileTypes: true })
+    for (const entry of entries) {
+      let raw: string
+
+      if (entry.isFile() && entry.name.endsWith('.md')) {
+        raw = readFileSafe(join(skillsDir, entry.name))
+      } else if (entry.isDirectory()) {
+        const skillPath = join(skillsDir, entry.name, 'SKILL.md')
+        if (!existsSync(skillPath)) continue
+        raw = readFileSafe(skillPath)
+      } else {
+        continue
+      }
+
+      if (!raw) continue
+
+      // Parse YAML frontmatter for name/description
+      let name = entry.name.replace(/\.md$/, '')
+      let description = name
+      let content = raw
+
+      const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
+      if (fmMatch) {
+        const fm = fmMatch[1]
+        content = fmMatch[2].trim()
+        const nameMatch = fm.match(/^name:\s*(.+)$/m)
+        const descMatch = fm.match(/^description:\s*(.+)$/m)
+        if (nameMatch) name = nameMatch[1].trim()
+        if (descMatch) description = descMatch[1].trim()
+      }
+
+      skills.push({ name, description, content })
+    }
+  } catch {
+    // ignore errors reading skills
+  }
+
+  if (skills.length === 0) return ''
+
+  const lines = ['# Available Skills\n']
+  for (const s of skills) {
+    lines.push(`## ${s.name}\n**${s.description}**\n\n${s.content}\n`)
+  }
+  return lines.join('\n')
+}
+
 /** Build the system prompt by reading workspace files from the CWD. */
 function buildSystemPrompt(cwd: string, basePrompt?: string): string {
   const sections: string[] = []
@@ -102,6 +155,12 @@ function buildSystemPrompt(cwd: string, basePrompt?: string): string {
     if (content) {
       sections.push(`## ${file}\n\n${content}`)
     }
+  }
+
+  // Load skills from the workspace skills/ directory
+  const skillSections = loadSkillSections(join(cwd, 'skills'))
+  if (skillSections) {
+    sections.push(skillSections)
   }
 
   // Always include scheduling instructions so the AI knows how to manage cron jobs
