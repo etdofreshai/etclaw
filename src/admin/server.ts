@@ -311,6 +311,7 @@ export function startAdminServer(options: AdminServerOptions): void {
             env: entry?.env ?? {},
             workerPath: entry?.workerPath ?? '',
             restartCount: entry?.restartCount ?? 0,
+            providerName: entry?.config?.defaultProvider ?? w.providerName,
           }
         })
         return json(detailed)

@@ -261,12 +261,13 @@ export class ProcessManager {
   /**
    * List all managed processes.
    */
-  list(): Array<{ name: string; type: string; pid: number | undefined; status: string }> {
+  list(): Array<{ name: string; type: string; pid: number | undefined; status: string; providerName: string | undefined }> {
     return Array.from(this.processes.values()).map(e => ({
       name: e.name,
       type: e.type,
       pid: e.proc.pid,
       status: e.status,
+      providerName: e.config?.defaultProvider as string | undefined,
     }))
   }
 

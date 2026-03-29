@@ -93,6 +93,8 @@ tr:hover td { background: rgba(15, 52, 96, 0.3); }
 .badge-stopped { background: #374151; color: #9ca3af; }
 .badge-channel { background: #1e3a5f; color: #93c5fd; }
 .badge-provider { background: #3b1f5f; color: #c4b5fd; }
+.badge-provider-claude { background: #1a3050; color: #d4a574; }
+.badge-provider-zai { background: #1a3a1a; color: #7ee77e; }
 
 /* ---- Buttons ---- */
 .btn {
@@ -296,7 +298,7 @@ label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; 
       <div class="card">
         <h2>Running Workers</h2>
         <table>
-          <thead><tr><th>Name</th><th>Type</th><th>PID</th><th>Status</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Name</th><th>Type</th><th>Provider</th><th>PID</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody id="dash-workers"></tbody>
         </table>
       </div>
@@ -307,7 +309,7 @@ label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; 
       <div class="card">
         <h2>Active Workers</h2>
         <table>
-          <thead><tr><th>Name</th><th>Type</th><th>PID</th><th>Status</th><th>Restarts</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Name</th><th>Type</th><th>Provider</th><th>PID</th><th>Status</th><th>Restarts</th><th>Actions</th></tr></thead>
           <tbody id="workers-table"></tbody>
         </table>
       </div>
@@ -606,6 +608,7 @@ async function loadDashboard() {
       <tr>
         <td class="mono">${esc(w.name)}</td>
         <td><span class="badge badge-${w.type}">${w.type}</span></td>
+        <td>${w.providerName ? `<span class="badge badge-provider-${esc(w.providerName)}">${esc(w.providerName)}</span>` : '-'}</td>
         <td class="mono">${w.pid ?? '-'}</td>
         <td><span class="badge badge-${w.status}">${w.status}</span></td>
         <td class="btn-group">
@@ -633,6 +636,7 @@ async function loadWorkers() {
       <tr>
         <td class="mono">${esc(w.name)}</td>
         <td><span class="badge badge-${w.type}">${w.type}</span></td>
+        <td>${w.providerName ? `<span class="badge badge-provider-${esc(w.providerName)}">${esc(w.providerName)}</span>` : '-'}</td>
         <td class="mono">${w.pid ?? '-'}</td>
         <td><span class="badge badge-${w.status}">${w.status}</span></td>
         <td>${w.restartCount}</td>
