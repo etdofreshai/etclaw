@@ -1,5 +1,5 @@
 import { Cron } from 'croner'
-import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, watch, type FSWatcher } from 'fs'
 import { join } from 'path'
 import type { ETClawConfig, ProviderOptions } from '../types'
 
@@ -26,6 +26,8 @@ interface CronJobDef {
 const jobs = new Map<string, CronJob>()
 let queryFn: CronQueryFn | undefined
 let persistPath: string | undefined
+let fileWatcher: FSWatcher | undefined
+let ignoreNextChange = false
 
 // ---- Persistence helpers ----
 
@@ -50,9 +52,58 @@ function persistJobs(): void {
   }))
   try {
     mkdirSync(join(persistPath, '..'), { recursive: true })
+    ignoreNextChange = true
     writeFileSync(persistPath, JSON.stringify(defs, null, 2) + '\n')
   } catch (err) {
     console.error(`cron: failed to persist jobs: ${err}`)
+  }
+}
+
+/**
+ * Sync in-memory jobs with what's on disk.
+ * Adds new jobs, removes deleted ones, updates changed ones.
+ */
+function syncFromDisk(): void {
+  const diskDefs = loadPersistedJobs()
+  const diskNames = new Set(diskDefs.map(d => d.name))
+  const memNames = new Set(jobs.keys())
+
+  // Remove jobs no longer on disk
+  for (const name of memNames) {
+    if (!diskNames.has(name)) {
+      const job = jobs.get(name)
+      if (job?.cron) job.cron.stop()
+      jobs.delete(name)
+      console.error(`cron: removed job '${name}' (deleted from disk)`)
+    }
+  }
+
+  // Add or update jobs from disk
+  for (const def of diskDefs) {
+    const existing = jobs.get(def.name)
+    if (!existing || existing.schedule !== def.schedule || existing.prompt !== def.prompt || existing.provider !== def.provider) {
+      // Remove old version if exists
+      if (existing?.cron) {
+        existing.cron.stop()
+        jobs.delete(def.name)
+      }
+      // Schedule new — but don't persist back (avoid loop)
+      const cron = new Cron(def.schedule, async () => {
+        if (!queryFn) {
+          console.error(`cron: no query function set, cannot run job '${def.name}'`)
+          return
+        }
+        console.error(`cron: running job '${def.name}'`)
+        try {
+          const result = await queryFn(def.provider, def.prompt)
+          console.error(`cron: job '${def.name}' completed${result ? ` (${result.length} chars)` : ''}`)
+        } catch (err) {
+          console.error(`cron: job '${def.name}' failed: ${err}`)
+        }
+      })
+      jobs.set(def.name, { ...def, cron })
+      console.error(`cron: ${existing ? 'updated' : 'added'} job '${def.name}' from disk (${def.schedule})`)
+    }
   }
 }
 
@@ -125,6 +176,21 @@ export function initCron(config: ETClawConfig): void {
       provider: def.provider,
       prompt: def.prompt,
     })
+  }
+
+  // Watch for external changes to cron.json
+  try {
+    mkdirSync(join(persistPath, '..'), { recursive: true })
+    fileWatcher = watch(persistPath, { persistent: false }, () => {
+      if (ignoreNextChange) {
+        ignoreNextChange = false
+        return
+      }
+      console.error('cron: cron.json changed on disk, syncing...')
+      syncFromDisk()
+    })
+  } catch {
+    // File might not exist yet — that's okay, watcher will be set up when first job is added
   }
 
   console.error(`cron: initialized (${saved.length} job(s) restored from disk)`)
