@@ -87,6 +87,14 @@ async function readBody<T = any>(req: Request): Promise<T> {
 
 const startTime = Date.now()
 
+// Load build metadata (written by Dockerfile)
+let buildInfo = { sha: 'dev', date: 'unknown' }
+try {
+  buildInfo = JSON.parse(readFileSync(join(import.meta.dir, '..', '..', 'build.json'), 'utf8'))
+} catch {
+  // Not running from Docker build — that's fine
+}
+
 export function startAdminServer(options: AdminServerOptions): void {
   const { port, password, processManager, sessionManager, accessFilePath, globalEnv } = options
 
@@ -153,8 +161,8 @@ export function startAdminServer(options: AdminServerOptions): void {
           workers,
           workerCount: workers.length,
           sessionCount: Object.keys(sessions).length,
-          buildSha: process.env.BUILD_SHA ?? 'dev',
-          buildDate: process.env.BUILD_DATE ?? 'unknown',
+          buildSha: buildInfo.sha,
+          buildDate: buildInfo.date,
         })
       }
 

@@ -37,8 +37,7 @@ RUN mkdir -p .etclaw/telegram /workspace && chown -R etclaw:etclaw /app /workspa
 # Build metadata (pass via --build-arg)
 ARG BUILD_SHA=unknown
 ARG BUILD_DATE=unknown
-ENV BUILD_SHA=${BUILD_SHA}
-ENV BUILD_DATE=${BUILD_DATE}
+RUN printf '{"sha":"%s","date":"%s"}\n' "$BUILD_SHA" "$BUILD_DATE" > /app/build.json
 
 # Environment variables (provide at runtime)
 ENV NODE_ENV=production
