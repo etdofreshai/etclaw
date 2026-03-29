@@ -26,6 +26,13 @@ process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = 'glm-5.1'
 
 createWorker({
   name: 'zai',
+  systemPromptSuffix: `# Provider Notice
+
+You are running on **GLM-5.1** via Z.AI, not Anthropic Claude. Keep these differences in mind:
+- You do NOT have access to Claude Code tools (Read, Write, Edit, Bash, etc.)
+- You are a conversational assistant only — no file access, no code execution
+- If asked to do something requiring tools, let the user know they should switch back to Claude (\`/model sonnet\`)
+- Be helpful, concise, and direct`,
   envOverrides: {
     // CLAUDE_CODE_SIMPLE makes the SDK use ANTHROPIC_API_KEY instead of OAuth
     CLAUDE_CODE_SIMPLE: 'true',

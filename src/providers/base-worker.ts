@@ -184,6 +184,11 @@ export interface WorkerOptions {
    * instead, to avoid SDK validation against known Claude model names.
    */
   skipModelPassthrough?: boolean
+  /**
+   * Extra text appended to the system prompt for this provider.
+   * Use this to inject provider-specific instructions, identity, or constraints.
+   */
+  systemPromptSuffix?: string
 }
 
 // ---- Query handling ----
@@ -212,7 +217,11 @@ async function handleQuery(
   }
   // Build system prompt from workspace files in CWD
   const cwd = options.cwd ?? process.cwd()
-  queryOptions.systemPrompt = buildSystemPrompt(cwd, options.systemPrompt)
+  let systemPrompt = buildSystemPrompt(cwd, options.systemPrompt)
+  if (workerOpts.systemPromptSuffix) {
+    systemPrompt += '\n\n---\n\n' + workerOpts.systemPromptSuffix
+  }
+  queryOptions.systemPrompt = systemPrompt
   if (options.model && !workerOpts.skipModelPassthrough) {
     queryOptions.model = options.model
   }
