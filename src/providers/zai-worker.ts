@@ -17,6 +17,8 @@ if (!ZAI_TOKEN) {
 createWorker({
   name: 'zai',
   envOverrides: {
+    // CLAUDE_CODE_SIMPLE makes the SDK use ANTHROPIC_API_KEY instead of OAuth
+    CLAUDE_CODE_SIMPLE: 'true',
     ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
     ANTHROPIC_API_KEY: ZAI_TOKEN,
     // Map all model tiers to glm-5.1 — the SDK resolves these internally
@@ -24,8 +26,6 @@ createWorker({
     ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-5.1',
     ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-5.1',
     ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-5.1',
-    // Capabilities — tell SDK what glm-5.1 supports
-    ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES: 'computer_use',
   },
   queryOverrides: {
     // Don't load filesystem settings — use only what we provide
