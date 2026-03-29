@@ -1,5 +1,6 @@
 import type { Provider } from '../types'
 import { ClaudeProvider } from './claude'
+import { ZaiProvider } from './zai'
 
 const providers = new Map<string, Provider>()
 
@@ -18,4 +19,5 @@ export function listProviders(): string[] {
 /** Register all built-in providers. */
 export function initProviders(): void {
   registerProvider(new ClaudeProvider())
+  registerProvider(new ZaiProvider())
 }

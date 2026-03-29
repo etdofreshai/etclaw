@@ -157,6 +157,9 @@ const MODEL_ALIASES: Record<string, string> = {
   'o4': 'claude-opus-4-6',
   's4': 'claude-sonnet-4-6',
   'h4': 'claude-haiku-4-5-20251001',
+  'glm': 'glm-5.1',
+  'glm5': 'glm-5.1',
+  'zai': 'glm-5.1',
   'default': 'default',
 }
 
@@ -164,6 +167,7 @@ const AVAILABLE_MODELS = [
   { id: 'claude-opus-4-6', aliases: ['opus', 'o4'], description: 'Most capable, best for complex tasks' },
   { id: 'claude-sonnet-4-6', aliases: ['sonnet', 's4'], description: 'Balanced speed and capability' },
   { id: 'claude-haiku-4-5-20251001', aliases: ['haiku', 'h4'], description: 'Fastest, best for simple tasks' },
+  { id: 'glm-5.1', aliases: ['glm', 'glm5', 'zai'], description: 'Z.AI GLM-5.1 via Anthropic-compatible API' },
 ]
 
 function resolveModelAlias(input: string): string {

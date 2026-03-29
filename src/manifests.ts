@@ -6,12 +6,14 @@
 import type { WorkerManifest, EnvRequirement } from './types'
 import { manifest as telegramManifest } from './channels/telegram.manifest'
 import { manifest as claudeManifest } from './providers/claude.manifest'
+import { manifest as zaiManifest } from './providers/zai.manifest'
 
 const manifests = new Map<string, WorkerManifest>()
 
 // Register built-in manifests
 manifests.set(telegramManifest.name, telegramManifest)
 manifests.set(claudeManifest.name, claudeManifest)
+manifests.set(zaiManifest.name, zaiManifest)
 
 export function registerManifest(m: WorkerManifest): void {
   manifests.set(m.name, m)
