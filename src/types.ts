@@ -7,6 +7,7 @@ export interface ProviderMessage {
   raw?: any
   toolName?: string
   toolInput?: Record<string, any>
+  files?: string[]  // file paths to attach (extracted from {{file:...}} markers)
 }
 
 export interface ProviderOptions {

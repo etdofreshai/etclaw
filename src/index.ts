@@ -358,13 +358,25 @@ async function main(): Promise<void> {
         sessionManager.updateSessionId(incoming.channelType, incoming.chatId, message.sessionId)
       }
 
+      // Extract {{file:/path/to/file}} markers from response text
+      const fileMarkerRegex = /\{\{file:([^}]+)\}\}/g
+      let text = message.content ?? ''
+      const files: string[] = []
+      let match: RegExpExecArray | null
+      while ((match = fileMarkerRegex.exec(text)) !== null) {
+        files.push(match[1].trim())
+      }
+      // Strip markers from the text sent to the user
+      text = text.replace(fileMarkerRegex, '').trim()
+
       // Send response to channel
-      if (message.content) {
+      if (text || files.length > 0) {
         pm.sendTo(channelName, {
           type: 'channel:send',
           payload: {
             chatId,
-            text: message.content,
+            text: text || '',
+            options: files.length > 0 ? { files } : undefined,
           },
         })
       }
