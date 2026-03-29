@@ -36,10 +36,10 @@ RUN groupadd -r etclaw && useradd -r -g etclaw -d /app etclaw
 RUN mkdir -p .etclaw/telegram /workspace && chown -R etclaw:etclaw /app /workspace
 
 # Extract build metadata from git, then remove .git to keep image small
-RUN printf '{"sha":"%s","date":"%s"}\n' \
-      "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
-      "$(git log -1 --format=%ci HEAD 2>/dev/null | cut -d' ' -f1 || echo unknown)" \
-    > /app/build.json \
+RUN git config --global --add safe.directory /app \
+  && SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
+  && DATE=$(git log -1 --format=%cd --date=short HEAD 2>/dev/null || echo "unknown") \
+  && printf '{"sha":"%s","date":"%s"}\n' "$SHA" "${DATE:-unknown}" > /app/build.json \
   && rm -rf .git
 
 # Environment variables (provide at runtime)
