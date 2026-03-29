@@ -18,7 +18,8 @@ export class ZaiProvider extends BaseProvider {
       allowDangerouslySkipPermissions: true,
       strictMcpConfig: true,
       settingSources: ['user', 'project', 'local'] as const,
-      model: options?.model ?? 'glm-5.1',
+      // Don't set model directly — SDK validates against known Claude models.
+      // ANTHROPIC_DEFAULT_*_MODEL env vars handle model selection below.
     }
 
     if (options?.sessionId) {

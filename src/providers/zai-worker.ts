@@ -19,13 +19,13 @@ createWorker({
   envOverrides: {
     ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
     ANTHROPIC_API_KEY: ZAI_TOKEN,
-    // Map all model tiers to glm-5.1
+    // Map all model tiers to glm-5.1 — the SDK resolves these internally
+    // so the API request gets the right model name without explicit model override
     ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-5.1',
     ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-5.1',
     ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-5.1',
   },
-  queryOverrides: {
-    // Default model for Z.AI — can still be overridden per-session
-    model: 'glm-5.1',
-  },
+  // Don't pass model directly to the SDK — it validates against known Claude models.
+  // The ANTHROPIC_DEFAULT_*_MODEL env vars handle model selection internally.
+  skipModelPassthrough: true,
 })

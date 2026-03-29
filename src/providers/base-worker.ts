@@ -178,6 +178,12 @@ export interface WorkerOptions {
   envOverrides?: Record<string, string>
   /** Extra query options to merge (e.g. model overrides) */
   queryOverrides?: Record<string, any>
+  /**
+   * Skip passing options.model to the SDK query.
+   * Use this when model selection is handled via ANTHROPIC_DEFAULT_*_MODEL env vars
+   * instead, to avoid SDK validation against known Claude model names.
+   */
+  skipModelPassthrough?: boolean
 }
 
 // ---- Query handling ----
@@ -207,7 +213,7 @@ async function handleQuery(
   // Build system prompt from workspace files in CWD
   const cwd = options.cwd ?? process.cwd()
   queryOptions.systemPrompt = buildSystemPrompt(cwd, options.systemPrompt)
-  if (options.model) {
+  if (options.model && !workerOpts.skipModelPassthrough) {
     queryOptions.model = options.model
   }
 
