@@ -60,11 +60,8 @@ async function main(): Promise<void> {
   const idleTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const IDLE_TIMEOUT = parseInt(process.env.PROVIDER_IDLE_TIMEOUT ?? '600000', 10)
 
-  /** Tracks sessions that just switched model/provider — next message gets an injection. */
-  const pendingModelSwitches = new Map<string, { model: string; provider: string }>()
-
-  // Track pending model-switch notices to inject into the next user message
-  const pendingModelNotices = new Map<string, string>()
+  /** Tracks sessions that just switched provider — next message gets a context injection. */
+  const pendingProviderSwitches = new Map<string, { from: string; to: string }>()
 
   /** Resolve the worker .ts file for a given provider name. */
   function getWorkerPathForProvider(provider: string): string {
@@ -240,10 +237,10 @@ async function main(): Promise<void> {
         const { channelType, chatId, model } = msg.payload as { channelType: string; chatId: string; model: string }
         const resolvedProvider = providerForModel(model, config.defaultProvider)
         const session = sessionManager.get(channelType, chatId)
+        const previousProvider = session?.provider ?? config.defaultProvider
         if (session) {
           session.model = model
           session.provider = resolvedProvider
-          session.sessionId = undefined  // fresh session for new provider
           sessionManager.set(channelType, chatId, session)
         } else {
           sessionManager.set(channelType, chatId, {
@@ -255,8 +252,10 @@ async function main(): Promise<void> {
         // Kill existing provider so it respawns with correct provider type + model
         const sessionKey = `${channelType}:${chatId}`
         killProviderForSession(sessionKey)
-        // Record pending switch so next message gets a context injection
-        pendingModelSwitches.set(sessionKey, { model, provider: resolvedProvider })
+        // Queue a provider switch notice for the next user message
+        if (previousProvider !== resolvedProvider) {
+          pendingProviderSwitches.set(sessionKey, { from: previousProvider, to: resolvedProvider })
+        }
         pm.sendTo('telegram', {
           type: 'session:modelResponse',
           payload: { chatId, model },
@@ -312,11 +311,11 @@ async function main(): Promise<void> {
     const chatName = incoming.chatTitle ?? incoming.chatId
     let prompt = ''
 
-    // Inject model switch context if this is the first message after a switch
-    const switchInfo = pendingModelSwitches.get(chatKey)
+    // Inject provider switch context if this is the first message after a provider change
+    const switchInfo = pendingProviderSwitches.get(chatKey)
     if (switchInfo) {
-      prompt += `[System: Model switched to ${switchInfo.model} (provider: ${switchInfo.provider}). This is a fresh session.]\n\n`
-      pendingModelSwitches.delete(chatKey)
+      prompt += `[System: Provider switched from ${switchInfo.from} to ${switchInfo.to}. Conversation continues.]\n\n`
+      pendingProviderSwitches.delete(chatKey)
     }
 
     prompt += `[Telegram chat: ${chatName}]\n${incoming.userName}: ${incoming.text}`
