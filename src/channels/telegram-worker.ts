@@ -1100,7 +1100,27 @@ async function startBot(): Promise<void> {
   bot.on('message:document', async ctx => {
     const doc = ctx.message.document
     const text = ctx.message.caption ?? `(document: ${doc.file_name ?? 'file'})`
-    await handleInbound(ctx, text, undefined)
+    await handleInbound(ctx, text, async () => {
+      try {
+        const file = await ctx.api.getFile(doc.file_id)
+        if (!file.file_path) return undefined
+        const url = `https://api.telegram.org/file/bot${config.telegramBotToken}/${file.file_path}`
+        const res = await fetch(url)
+        if (!res.ok) return undefined
+        const buf = Buffer.from(await res.arrayBuffer())
+        // Use original filename if available, otherwise construct one
+        const fileName = doc.file_name ?? `${Date.now()}-${doc.file_unique_id}`
+        const ext = fileName.includes('.') ? '' : '.bin'
+        const path = join(inboxDir, `${Date.now()}-${fileName}${ext}`)
+        mkdirSync(inboxDir, { recursive: true })
+        writeFileSync(path, buf)
+        console.error(`telegram worker: downloaded document: ${path} (${(buf.length / 1024).toFixed(0)}KB)`)
+        return path
+      } catch (err) {
+        console.error(`telegram worker: document download failed: ${err}`)
+        return undefined
+      }
+    })
   })
 
   // Video messages

@@ -320,10 +320,17 @@ async function main(): Promise<void> {
 
     prompt += `[Telegram chat: ${chatName}]\n${incoming.userName}: ${incoming.text}`
 
-    // Collect image paths for multimodal content
+    // Collect image paths for multimodal content, or file paths for Read tool
     const imagePaths: string[] = []
     if (incoming.imagePath) {
-      imagePaths.push(incoming.imagePath)
+      const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+      const ext = incoming.imagePath.toLowerCase().split('.').pop() ?? ''
+      if (IMAGE_EXTS.includes(`.${ext}`)) {
+        imagePaths.push(incoming.imagePath)
+      } else {
+        // Non-image file — tell the model to read it with the Read tool
+        prompt += `\n\n[File attached at: ${incoming.imagePath} — use the Read tool to view its contents]`
+      }
     }
 
     // Get or spawn a per-session provider worker
