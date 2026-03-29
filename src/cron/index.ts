@@ -11,6 +11,7 @@ interface CronJob {
   schedule: string
   provider: string
   prompt: string
+  recurring: boolean
   options?: ProviderOptions
   cron?: Cron
 }
@@ -21,6 +22,7 @@ interface CronJobDef {
   schedule: string
   provider: string
   prompt: string
+  recurring?: boolean  // defaults to true for backward compat
 }
 
 const jobs = new Map<string, CronJob>()
@@ -49,6 +51,7 @@ function persistJobs(): void {
     schedule: j.schedule,
     provider: j.provider,
     prompt: j.prompt,
+    ...(j.recurring === false ? { recurring: false } : {}),
   }))
   try {
     mkdirSync(join(persistPath, '..'), { recursive: true })
@@ -56,6 +59,32 @@ function persistJobs(): void {
     writeFileSync(persistPath, JSON.stringify(defs, null, 2) + '\n')
   } catch (err) {
     console.error(`cron: failed to persist jobs: ${err}`)
+  }
+}
+
+/** Create the cron callback for a job (shared by addCronJob and syncFromDisk). */
+function makeCronCallback(name: string, provider: string, prompt: string, recurring: boolean, options?: ProviderOptions) {
+  return async () => {
+    if (!queryFn) {
+      console.error(`cron: no query function set, cannot run job '${name}'`)
+      return
+    }
+    console.error(`cron: running job '${name}'${recurring ? '' : ' (one-off)'}`)
+    try {
+      const result = await queryFn(provider, prompt, options)
+      console.error(`cron: job '${name}' completed${result ? ` (${result.length} chars)` : ''}`)
+    } catch (err) {
+      console.error(`cron: job '${name}' failed: ${err}`)
+    }
+
+    // Auto-remove one-off jobs after execution
+    if (!recurring) {
+      const job = jobs.get(name)
+      if (job?.cron) job.cron.stop()
+      jobs.delete(name)
+      persistJobs()
+      console.error(`cron: removed one-off job '${name}' after execution`)
+    }
   }
 }
 
@@ -80,29 +109,19 @@ function syncFromDisk(): void {
 
   // Add or update jobs from disk
   for (const def of diskDefs) {
+    const recurring = def.recurring !== false
     const existing = jobs.get(def.name)
-    if (!existing || existing.schedule !== def.schedule || existing.prompt !== def.prompt || existing.provider !== def.provider) {
+    if (!existing || existing.schedule !== def.schedule || existing.prompt !== def.prompt || existing.provider !== def.provider || existing.recurring !== recurring) {
       // Remove old version if exists
       if (existing?.cron) {
         existing.cron.stop()
         jobs.delete(def.name)
       }
       // Schedule new — but don't persist back (avoid loop)
-      const cron = new Cron(def.schedule, async () => {
-        if (!queryFn) {
-          console.error(`cron: no query function set, cannot run job '${def.name}'`)
-          return
-        }
-        console.error(`cron: running job '${def.name}'`)
-        try {
-          const result = await queryFn(def.provider, def.prompt)
-          console.error(`cron: job '${def.name}' completed${result ? ` (${result.length} chars)` : ''}`)
-        } catch (err) {
-          console.error(`cron: job '${def.name}' failed: ${err}`)
-        }
-      })
-      jobs.set(def.name, { ...def, cron })
-      console.error(`cron: ${existing ? 'updated' : 'added'} job '${def.name}' from disk (${def.schedule})`)
+      const cron = new Cron(def.schedule, { maxRuns: recurring ? Infinity : 1 },
+        makeCronCallback(def.name, def.provider, def.prompt, recurring))
+      jobs.set(def.name, { ...def, recurring, cron })
+      console.error(`cron: ${existing ? 'updated' : 'added'} job '${def.name}' from disk (${def.schedule}${recurring ? '' : ', one-off'})`)
     }
   }
 }
@@ -119,24 +138,16 @@ export function addCronJob(job: CronJob): void {
   // Stop existing job with same name if any
   removeCronJob(job.name)
 
-  const cron = new Cron(job.schedule, async () => {
-    if (!queryFn) {
-      console.error(`cron: no query function set, cannot run job '${job.name}'`)
-      return
-    }
-    console.error(`cron: running job '${job.name}'`)
-    try {
-      const result = await queryFn(job.provider, job.prompt, job.options)
-      console.error(`cron: job '${job.name}' completed${result ? ` (${result.length} chars)` : ''}`)
-    } catch (err) {
-      console.error(`cron: job '${job.name}' failed: ${err}`)
-    }
-  })
+  const recurring = job.recurring !== false
+
+  const cron = new Cron(job.schedule, { maxRuns: recurring ? Infinity : 1 },
+    makeCronCallback(job.name, job.provider, job.prompt, recurring, job.options))
 
   job.cron = cron
+  job.recurring = recurring
   jobs.set(job.name, job)
   persistJobs()
-  console.error(`cron: scheduled job '${job.name}' (${job.schedule})`)
+  console.error(`cron: scheduled job '${job.name}' (${job.schedule}${recurring ? '' : ', one-off'})`)
 }
 
 export function removeCronJob(name: string): void {
@@ -175,6 +186,7 @@ export function initCron(config: ETClawConfig): void {
       schedule: def.schedule,
       provider: def.provider,
       prompt: def.prompt,
+      recurring: def.recurring !== false,
     })
   }
 
