@@ -319,8 +319,11 @@ async function main(): Promise<void> {
     }
 
     prompt += `[Telegram chat: ${chatName}]\n${incoming.userName}: ${incoming.text}`
+
+    // Collect image paths for multimodal content
+    const imagePaths: string[] = []
     if (incoming.imagePath) {
-      prompt += `\n\n[Image attached at: ${incoming.imagePath} — use the Read tool to view it]`
+      imagePaths.push(incoming.imagePath)
     }
 
     // Get or spawn a per-session provider worker
@@ -343,6 +346,7 @@ async function main(): Promise<void> {
           cwd: session?.cwd ?? config.defaultCwd,
           systemPrompt: config.soulPrompt,
           model: session?.model ?? config.defaultModel,
+          ...(imagePaths.length > 0 ? { imagePaths } : {}),
         },
       },
     })

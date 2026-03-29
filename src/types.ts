@@ -15,6 +15,7 @@ export interface ProviderOptions {
   cwd?: string
   systemPrompt?: string
   model?: string
+  imagePaths?: string[]  // paths to images to include as multimodal content blocks
 }
 
 export interface Provider {

@@ -7,9 +7,9 @@
  * IPC, system prompt building, streaming — lives here once.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk'
+import { query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { readFileSync, readdirSync, existsSync } from 'fs'
-import { join, resolve } from 'path'
+import { join, resolve, extname } from 'path'
 import { onParentMessage, sendToParent, type IPCMessage } from '../ipc'
 import type { ProviderOptions } from '../types'
 import { formatToolUse } from './format-tool'
@@ -191,6 +191,45 @@ export interface WorkerOptions {
   systemPromptSuffix?: string
 }
 
+// ---- Image helpers ----
+
+const MIME_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+}
+
+/** Build a multimodal SDKUserMessage with text + inline base64 images. */
+function buildMultimodalMessage(prompt: string, imagePaths: string[]): SDKUserMessage {
+  const content: any[] = []
+
+  for (const imgPath of imagePaths) {
+    try {
+      const data = readFileSync(imgPath)
+      const ext = extname(imgPath).toLowerCase()
+      const mediaType = MIME_TYPES[ext] ?? 'image/jpeg'
+      content.push({
+        type: 'image' as const,
+        source: {
+          type: 'base64' as const,
+          media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+          data: data.toString('base64'),
+        },
+      })
+      console.error(`base-worker: attached image ${imgPath} (${(data.length / 1024).toFixed(0)}KB, ${mediaType})`)
+    } catch (err) {
+      console.error(`base-worker: failed to read image ${imgPath}: ${err}`)
+    }
+  }
+
+  content.push({ type: 'text' as const, text: prompt })
+
+  return {
+    type: 'user',
+    message: { role: 'user' as const, content },
+    parent_tool_use_id: null,
+  }
+}
+
 // ---- Query handling ----
 
 async function handleQuery(
@@ -241,8 +280,17 @@ async function handleQuery(
     ...workerOpts.envOverrides,
   }
 
+  // Build prompt: use multimodal SDKUserMessage if images are attached,
+  // otherwise use plain string
+  const hasImages = options.imagePaths && options.imagePaths.length > 0
+  const promptInput: string | AsyncIterable<SDKUserMessage> = hasImages
+    ? (async function* () {
+        yield buildMultimodalMessage(prompt, options.imagePaths!)
+      })()
+    : prompt
+
   try {
-    for await (const msg of query({ prompt, options: queryOptions })) {
+    for await (const msg of query({ prompt: promptInput, options: queryOptions })) {
       // System message with session_id
       if (msg.type === 'system' && 'session_id' in msg) {
         sendToParent({
