@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   // ---- Per-session provider worker management ----
 
   const idleTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  const IDLE_TIMEOUT = parseInt(process.env.PROVIDER_IDLE_TIMEOUT ?? '600000', 10)
+  const IDLE_TIMEOUT = parseInt(process.env.PROVIDER_IDLE_TIMEOUT ?? '1800000', 10)
 
   /** Tracks sessions that just switched provider — next message gets a context injection. */
   const pendingProviderSwitches = new Map<string, { from: string; to: string }>()
