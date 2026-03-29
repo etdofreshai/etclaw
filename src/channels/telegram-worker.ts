@@ -1099,7 +1099,24 @@ async function startBot(): Promise<void> {
   // Document messages
   bot.on('message:document', async ctx => {
     const doc = ctx.message.document
-    const text = ctx.message.caption ?? `(document: ${doc.file_name ?? 'file'})`
+    const fileName = doc.file_name ?? 'file'
+    const fileSizeMB = doc.file_size ? (doc.file_size / 1024 / 1024).toFixed(1) : '?'
+
+    // Check size before attempting download — Telegram Bot API limit is 20 MB
+    if (doc.file_size && doc.file_size > 20 * 1024 * 1024) {
+      const chatId = String(ctx.chat!.id)
+      await enqueueApiCall(() => bot.api.sendMessage(
+        chatId,
+        `⚠️ File <b>${fileName}</b> (${fileSizeMB} MB) is too large — Telegram bots can only download files up to 20 MB.`,
+        { parse_mode: 'HTML' },
+      )).catch(() => {})
+      // Still forward the message so the AI knows a file was attempted
+      const text = ctx.message.caption ?? `(document: ${fileName}, ${fileSizeMB} MB — too large to download, Telegram bot limit is 20 MB)`
+      await handleInbound(ctx, text, undefined)
+      return
+    }
+
+    const text = ctx.message.caption ?? `(document: ${fileName})`
     await handleInbound(ctx, text, async () => {
       try {
         const file = await ctx.api.getFile(doc.file_id)
@@ -1109,15 +1126,24 @@ async function startBot(): Promise<void> {
         if (!res.ok) return undefined
         const buf = Buffer.from(await res.arrayBuffer())
         // Use original filename if available, otherwise construct one
-        const fileName = doc.file_name ?? `${Date.now()}-${doc.file_unique_id}`
         const ext = fileName.includes('.') ? '' : '.bin'
         const path = join(inboxDir, `${Date.now()}-${fileName}${ext}`)
         mkdirSync(inboxDir, { recursive: true })
         writeFileSync(path, buf)
         console.error(`telegram worker: downloaded document: ${path} (${(buf.length / 1024).toFixed(0)}KB)`)
         return path
-      } catch (err) {
-        console.error(`telegram worker: document download failed: ${err}`)
+      } catch (err: any) {
+        const errStr = String(err)
+        console.error(`telegram worker: document download failed: ${errStr}`)
+        // Notify user if it's a size-related error we didn't catch above
+        if (errStr.includes('too big') || errStr.includes('file is too large')) {
+          const chatId = String(ctx.chat!.id)
+          void enqueueApiCall(() => bot.api.sendMessage(
+            chatId,
+            `⚠️ File <b>${fileName}</b> is too large for Telegram bots to download (20 MB limit).`,
+            { parse_mode: 'HTML' },
+          )).catch(() => {})
+        }
         return undefined
       }
     })
