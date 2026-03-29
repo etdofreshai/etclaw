@@ -24,6 +24,12 @@ createWorker({
     ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-5.1',
     ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-5.1',
     ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-5.1',
+    // Capabilities — tell SDK what glm-5.1 supports
+    ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES: 'computer_use',
+  },
+  queryOverrides: {
+    // Don't load filesystem settings — use only what we provide
+    settingSources: [],
   },
   // Don't pass model directly to the SDK — it validates against known Claude models.
   // The ANTHROPIC_DEFAULT_*_MODEL env vars handle model selection internally.
