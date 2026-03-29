@@ -503,12 +503,13 @@ document.getElementById('login-password').addEventListener('keydown', e => {
 
 // ---- Navigation ----
 
-function switchPage(name) {
+function switchPage(name, pushState = true) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   document.querySelectorAll('nav button').forEach(b => {
     b.classList.toggle('active', b.dataset.page === name);
   });
+  if (pushState) history.replaceState(null, '', '#' + name);
   loadCurrentPage();
 }
 
@@ -1091,6 +1092,10 @@ function escAttr(s) {
 (async function init() {
   const authed = await checkAuth();
   if (authed) {
+    const hash = location.hash.replace('#', '');
+    if (hash && document.getElementById('page-' + hash)) {
+      switchPage(hash, false);
+    }
     startAutoRefresh();
     loadCurrentPage();
   }
