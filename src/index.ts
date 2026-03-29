@@ -466,6 +466,19 @@ async function main(): Promise<void> {
    */
   function handleProviderMessage(msg: ProviderMessageIPC): void {
     const { chatKey, message } = msg.payload
+
+    // Reset idle timer — the worker is actively producing output
+    const workerName = `provider:${chatKey}`
+    const existingTimer = idleTimers.get(workerName)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+      idleTimers.set(workerName, setTimeout(() => {
+        pm.kill(workerName)
+        idleTimers.delete(workerName)
+        console.error(`router: killed idle provider ${workerName}`)
+      }, IDLE_TIMEOUT))
+    }
+
     const pending = pendingQueries.get(chatKey)
 
     if (!pending) {
