@@ -40,7 +40,6 @@ export interface IncomingMessage {
 }
 
 export interface SendOptions {
-  replyTo?: string
   parseMode?: 'text' | 'markdownv2'
   files?: string[]
 }
@@ -144,7 +143,6 @@ export type Access = {
   pending: Record<string, PendingEntry>
   mentionPatterns?: string[]
   ackReaction?: string
-  replyToMode?: 'off' | 'first' | 'all'
   textChunkLimit?: number
   chunkMode?: 'length' | 'newline'
 }

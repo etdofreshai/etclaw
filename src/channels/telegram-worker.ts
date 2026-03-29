@@ -243,7 +243,7 @@ function loadAccess(): Access {
       pending: parsed.pending ?? {},
       mentionPatterns: parsed.mentionPatterns,
       ackReaction: parsed.ackReaction,
-      replyToMode: parsed.replyToMode,
+
       textChunkLimit: parsed.textChunkLimit,
       chunkMode: parsed.chunkMode,
     }
@@ -652,7 +652,6 @@ function handleParentMessage(msg: IPCMessage): void {
       const access = ctx?.access ?? loadAccess()
       const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
       const mode = access.chunkMode ?? 'length'
-      const replyMode = access.replyToMode ?? 'first'
       // Convert markdown to Telegram HTML
       const htmlText = markdownToTelegramHTML(text)
       const chunks = chunk(htmlText, limit, mode)
@@ -671,13 +670,10 @@ function handleParentMessage(msg: IPCMessage): void {
           for (const f of options?.files ?? []) {
             const ext = extname(f).toLowerCase()
             const input = new InputFile(f)
-            const opts = ctx?.msgId != null && replyMode !== 'off'
-              ? { reply_parameters: { message_id: ctx.msgId } }
-              : undefined
             if (PHOTO_EXTS.has(ext)) {
-              await enqueueApiCall(() => bot.api.sendPhoto(chatId, input, opts))
+              await enqueueApiCall(() => bot.api.sendPhoto(chatId, input))
             } else {
-              await enqueueApiCall(() => bot.api.sendDocument(chatId, input, opts))
+              await enqueueApiCall(() => bot.api.sendDocument(chatId, input))
             }
           }
 

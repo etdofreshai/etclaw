@@ -61,7 +61,7 @@ export class TelegramChannel extends BaseChannel {
         pending: parsed.pending ?? {},
         mentionPatterns: parsed.mentionPatterns,
         ackReaction: parsed.ackReaction,
-        replyToMode: parsed.replyToMode,
+  
         textChunkLimit: parsed.textChunkLimit,
         chunkMode: parsed.chunkMode,
       }
@@ -502,11 +502,7 @@ export class TelegramChannel extends BaseChannel {
         if (response) {
           const chunks = this.chunk(response, access.textChunkLimit ?? 4096, access.chunkMode ?? 'length')
           for (let i = 0; i < chunks.length; i++) {
-            await this.bot.api.sendMessage(chatId, chunks[i], {
-              ...(i === 0 && msgId != null && (access.replyToMode === 'first' || access.replyToMode === 'all')
-                ? { reply_parameters: { message_id: msgId } }
-                : {}),
-            })
+            await this.bot.api.sendMessage(chatId, chunks[i], {})
           }
 
           // TTS for voice messages
@@ -739,16 +735,12 @@ export class TelegramChannel extends BaseChannel {
     const access = this.loadAccess()
     const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
     const mode = access.chunkMode ?? 'length'
-    const replyMode = access.replyToMode ?? 'first'
     const chunks = this.chunk(text, limit, mode)
     const sentIds: number[] = []
-    const replyTo = options?.replyTo ? Number(options.replyTo) : undefined
     const parseMode = options?.parseMode === 'markdownv2' ? 'MarkdownV2' as const : undefined
 
     for (let i = 0; i < chunks.length; i++) {
-      const shouldReplyTo = replyTo != null && replyMode !== 'off' && (replyMode === 'all' || i === 0)
       const sent = await this.bot.api.sendMessage(chatId, chunks[i], {
-        ...(shouldReplyTo ? { reply_parameters: { message_id: replyTo } } : {}),
         ...(parseMode ? { parse_mode: parseMode } : {}),
       })
       sentIds.push(sent.message_id)
@@ -759,14 +751,11 @@ export class TelegramChannel extends BaseChannel {
     for (const f of options?.files ?? []) {
       const ext = extname(f).toLowerCase()
       const input = new InputFile(f)
-      const opts = replyTo != null && replyMode !== 'off'
-        ? { reply_parameters: { message_id: replyTo } }
-        : undefined
       if (PHOTO_EXTS.has(ext)) {
-        const sent = await this.bot.api.sendPhoto(chatId, input, opts)
+        const sent = await this.bot.api.sendPhoto(chatId, input)
         sentIds.push(sent.message_id)
       } else {
-        const sent = await this.bot.api.sendDocument(chatId, input, opts)
+        const sent = await this.bot.api.sendDocument(chatId, input)
         sentIds.push(sent.message_id)
       }
     }

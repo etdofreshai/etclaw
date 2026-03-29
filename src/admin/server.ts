@@ -401,7 +401,7 @@ export function startAdminServer(options: AdminServerOptions): void {
         if (body.groups !== undefined) access.groups = body.groups
         if (body.mentionPatterns !== undefined) access.mentionPatterns = body.mentionPatterns
         if (body.ackReaction !== undefined) access.ackReaction = body.ackReaction
-        if (body.replyToMode !== undefined) access.replyToMode = body.replyToMode
+
         if (body.textChunkLimit !== undefined) access.textChunkLimit = body.textChunkLimit
         if (body.chunkMode !== undefined) access.chunkMode = body.chunkMode
         saveAccess(accessFilePath, access)
