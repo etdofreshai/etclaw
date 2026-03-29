@@ -17,19 +17,34 @@ export function listSkills(): Skill[] {
 }
 
 /**
- * Load skills from a directory. Each .md file becomes a skill.
- * The filename (without extension) is the skill name.
+ * Load skills from a directory. Supports two formats:
+ * 1. Flat .md files: skills/my-skill.md
+ * 2. Directories with SKILL.md: skills/my-skill/SKILL.md
+ * The name is derived from the filename or directory name.
  * The first line starting with # is the description.
  */
 export function loadSkillsFromDir(dir: string): void {
   if (!existsSync(dir)) return
 
   try {
-    const files = readdirSync(dir)
-    for (const file of files) {
-      if (extname(file) !== '.md') continue
-      const name = basename(file, '.md')
-      const content = readFileSync(join(dir, file), 'utf8')
+    const entries = readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      let name: string
+      let content: string
+
+      if (entry.isFile() && extname(entry.name) === '.md') {
+        // Flat .md file: skills/my-skill.md
+        name = basename(entry.name, '.md')
+        content = readFileSync(join(dir, entry.name), 'utf8')
+      } else if (entry.isDirectory()) {
+        // Directory with SKILL.md: skills/my-skill/SKILL.md
+        const skillPath = join(dir, entry.name, 'SKILL.md')
+        if (!existsSync(skillPath)) continue
+        name = entry.name
+        content = readFileSync(skillPath, 'utf8')
+      } else {
+        continue
+      }
 
       // Extract description from first heading
       const headingMatch = content.match(/^#\s+(.+)$/m)

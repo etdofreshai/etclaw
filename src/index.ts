@@ -29,7 +29,11 @@ async function main(): Promise<void> {
   const sessionManager = new SessionManager(config)
 
   // Initialize skills (runs in main process)
+  // Load from both projectDir and defaultCwd (workspace) in case they differ
   initSkills(config.projectDir)
+  if (config.defaultCwd !== config.projectDir) {
+    initSkills(config.defaultCwd)
+  }
 
   // Initialize cron (runs in main process)
   initCron(config)
