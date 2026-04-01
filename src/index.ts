@@ -20,14 +20,31 @@ import type { IncomingMessage, ProviderMessage, SessionEntry } from './types'
 /**
  * Map model names to their provider. Models not listed here use the default provider.
  */
+const MODEL_ALIASES: Record<string, string> = {
+  'glm': 'glm-5.1',
+  'glm5': 'glm-5.1',
+  'zai': 'glm-5.1',
+  'gpt': 'gpt-5.4',
+  'gpt5': 'gpt-5.4',
+  'gpt5.4': 'gpt-5.4',
+}
+
 const MODEL_TO_PROVIDER: Record<string, string> = {
   'glm-5.1': 'zai',
+  'gpt-5.4': 'codex',
+}
+
+function normalizeModel(model: string | undefined): string | undefined {
+  if (!model) return model
+  const lower = model.toLowerCase().trim()
+  return MODEL_ALIASES[lower] ?? lower
 }
 
 /** Resolve which provider should handle a given model name. */
 function providerForModel(model: string | undefined, defaultProvider: string): string {
-  if (!model) return defaultProvider
-  return MODEL_TO_PROVIDER[model] ?? defaultProvider
+  const normalized = normalizeModel(model)
+  if (!normalized) return defaultProvider
+  return MODEL_TO_PROVIDER[normalized] ?? defaultProvider
 }
 
 async function main(): Promise<void> {
@@ -228,25 +245,31 @@ async function main(): Promise<void> {
       } else if (msg.type === 'session:getModel') {
         const { channelType, chatId } = msg.payload as { channelType: string; chatId: string }
         const session = sessionManager.get(channelType, chatId)
-        const model = session?.model ?? config.defaultModel
+        const model = normalizeModel(session?.model ?? config.defaultModel) ?? config.defaultModel
+        if (session && session.model !== model) {
+          session.model = model
+          session.provider = providerForModel(model, config.defaultProvider)
+          sessionManager.set(channelType, chatId, session)
+        }
         pm.sendTo('telegram', {
           type: 'session:modelResponse',
           payload: { chatId, model },
         })
       } else if (msg.type === 'session:setModel') {
         const { channelType, chatId, model } = msg.payload as { channelType: string; chatId: string; model: string }
-        const resolvedProvider = providerForModel(model, config.defaultProvider)
+        const normalizedModel = normalizeModel(model) ?? model
+        const resolvedProvider = providerForModel(normalizedModel, config.defaultProvider)
         const session = sessionManager.get(channelType, chatId)
         const previousProvider = session?.provider ?? config.defaultProvider
         if (session) {
-          session.model = model
+          session.model = normalizedModel
           session.provider = resolvedProvider
           sessionManager.set(channelType, chatId, session)
         } else {
           sessionManager.set(channelType, chatId, {
             provider: resolvedProvider,
             name: chatId,
-            model,
+            model: normalizedModel,
           })
         }
         // Kill existing provider so it respawns with correct provider type + model
@@ -258,7 +281,7 @@ async function main(): Promise<void> {
         }
         pm.sendTo('telegram', {
           type: 'session:modelResponse',
-          payload: { chatId, model },
+          payload: { chatId, model: normalizedModel },
         })
         console.error(`router: model set to ${model} for ${sessionKey}`)
       }
@@ -442,6 +465,7 @@ async function main(): Promise<void> {
       channelName: incoming.channelType,
       chatId: incoming.chatId,
       incoming,
+      textParts: [],
     })
 
     pm.sendTo(workerName, {
@@ -486,7 +510,7 @@ async function main(): Promise<void> {
       return
     }
 
-    const { channelName, chatId, incoming } = pending
+    const { channelName, chatId, incoming, textParts } = pending
 
     // Stream thinking/tool blocks to channel
     if (message.type === 'thinking' || message.type === 'tool_use') {
@@ -500,6 +524,15 @@ async function main(): Promise<void> {
           toolInput: message.toolInput,
         },
       })
+      return
+    }
+
+    // Plain assistant text can arrive before the final result (Codex CLI does this).
+    // Accumulate it so we can send one consolidated reply when the result arrives.
+    if (message.type === 'text') {
+      if (message.content) {
+        textParts.push(message.content)
+      }
       return
     }
 
@@ -523,7 +556,7 @@ async function main(): Promise<void> {
 
       // Extract {{file:/path/to/file}} markers from response text
       const fileMarkerRegex = /\{\{file:([^}]+)\}\}/g
-      let text = message.content ?? ''
+      let text = message.content?.trim() ? message.content : textParts.join('\n\n')
       const files: string[] = []
       let match: RegExpExecArray | null
       while ((match = fileMarkerRegex.exec(text)) !== null) {
@@ -554,6 +587,7 @@ async function main(): Promise<void> {
     channelName: string
     chatId: string
     incoming: IncomingMessage
+    textParts: string[]
   }>()
 
   // ---- Graceful shutdown ----

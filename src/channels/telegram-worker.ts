@@ -8,7 +8,7 @@
  * Does NOT import any provider code.
  */
 
-import { Bot, GrammyError, InputFile, type Context } from 'grammy'
+import { Bot, GrammyError, InlineKeyboard, InputFile, type Context } from 'grammy'
 import type { ReactionTypeEmoji } from 'grammy/types'
 import { randomBytes } from 'crypto'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, renameSync, existsSync } from 'fs'
@@ -160,6 +160,8 @@ const MODEL_ALIASES: Record<string, string> = {
   'glm': 'glm-5.1',
   'glm5': 'glm-5.1',
   'zai': 'glm-5.1',
+  'gpt': 'gpt-5.4',
+  'gpt5': 'gpt-5.4',
   'default': 'default',
 }
 
@@ -168,7 +170,39 @@ const AVAILABLE_MODELS = [
   { id: 'claude-sonnet-4-6', aliases: ['sonnet', 's4'], description: 'Balanced speed and capability' },
   { id: 'claude-haiku-4-5-20251001', aliases: ['haiku', 'h4'], description: 'Fastest, best for simple tasks' },
   { id: 'glm-5.1', aliases: ['glm', 'glm5', 'zai'], description: 'Z.AI GLM-5.1 via Anthropic-compatible API' },
+  { id: 'gpt-5.4', aliases: ['gpt', 'gpt5', 'gpt5.4'], description: 'OpenAI GPT-5.4 via Codex CLI' },
 ]
+
+function modelLabel(modelId: string): string {
+  switch (modelId) {
+    case 'claude-opus-4-6':
+      return 'Opus'
+    case 'claude-sonnet-4-6':
+      return 'Sonnet'
+    case 'claude-haiku-4-5-20251001':
+      return 'Haiku'
+    case 'glm-5.1':
+      return 'GLM-5.1'
+    case 'gpt-5.4':
+      return 'GPT-5.4'
+    default:
+      return modelId
+  }
+}
+
+function buildModelKeyboard(currentModel: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard()
+  for (let i = 0; i < AVAILABLE_MODELS.length; i += 2) {
+    const row = AVAILABLE_MODELS.slice(i, i + 2)
+    row.forEach(model => {
+      const isCurrent = model.id === currentModel
+      const label = isCurrent ? `• ${modelLabel(model.id)}` : modelLabel(model.id)
+      keyboard.text(label, `model:${model.id}`)
+    })
+    if (i + 2 < AVAILABLE_MODELS.length) keyboard.row()
+  }
+  return keyboard
+}
 
 function resolveModelAlias(input: string): string {
   const lower = input.toLowerCase().trim()
@@ -183,6 +217,15 @@ const messageQueue = new Map<string, string[]>()
 
 // Track thinking message IDs per chat for deletion
 const thinkingMessageIds = new Map<string, number[]>()
+
+// Accumulate all thinking + tool_use content per chat into one message
+const thinkingContent = new Map<string, string>()
+
+// Serialize streamBlock sends per chat to avoid race conditions
+const thinkingSendQueue = new Map<string, Promise<void>>()
+
+// Track /stop message IDs so we can edit them to "Process has been stopped"
+const stopMessageIds = new Map<string, number>()
 
 // ---- Thinking message persistence ----
 
@@ -205,6 +248,24 @@ function saveThinkingMessages(): void {
   } catch (err) {
     console.error(`telegram worker: failed to save thinking messages: ${err}`)
   }
+}
+
+function dropThinkingMessageId(chatId: string, messageId: number): void {
+  const ids = thinkingMessageIds.get(chatId) ?? []
+  const nextIds = ids.filter(id => id !== messageId)
+  if (nextIds.length > 0) {
+    thinkingMessageIds.set(chatId, nextIds)
+  } else {
+    thinkingMessageIds.delete(chatId)
+  }
+  saveThinkingMessages()
+}
+
+function isMissingThinkingMessageError(err: unknown): boolean {
+  const text = String(err).toLowerCase()
+  return text.includes('message to edit not found')
+    || text.includes("message can't be edited")
+    || text.includes('message to delete not found')
 }
 
 async function cleanupStaleThinkingMessages(): Promise<void> {
@@ -706,6 +767,8 @@ function handleParentMessage(msg: IPCMessage): void {
           console.error(`telegram worker: failed to send response: ${err}`)
         } finally {
           messageContexts.delete(chatId)
+          thinkingContent.delete(chatId)
+          thinkingSendQueue.delete(chatId)
 
           // Drain queued messages
           const queue = messageQueue.get(chatId)
@@ -758,27 +821,85 @@ function handleParentMessage(msg: IPCMessage): void {
       }
       if (!config.showThinking) break
 
-      let text: string
+      let blockText: string
       if (blockType === 'thinking') {
-        text = `\u{1F4AD} ${content}`
+        blockText = `\u{1F4AD} ${content}`
       } else if (blockType === 'tool_use' && toolName) {
-        text = config.toolDisplayMode === 'raw'
-          ? formatToolUseRaw(toolName, toolInput ?? {})
-          : formatToolUse(toolName, toolInput ?? {})
+        const hasStructuredInput = !!toolInput && Object.keys(toolInput).length > 0
+        blockText = hasStructuredInput
+          ? (config.toolDisplayMode === 'raw'
+              ? formatToolUseRaw(toolName, toolInput ?? {})
+              : formatToolUse(toolName, toolInput ?? {}))
+          : content
       } else {
-        text = content
+        blockText = content
       }
 
-      const htmlText = markdownToTelegramHTML(text)
-      const truncated = htmlText.length > 4096 ? htmlText.slice(0, 4093) + '...' : htmlText
-      void enqueueApiCall(() => bot.api.sendMessage(chatId, truncated, { parse_mode: 'HTML' })).then(sent => {
+      // Accumulate all blocks (thinking + tool_use) into one message per chat
+      const existing = thinkingContent.get(chatId)
+      const accumulated = existing ? existing + '\n\n' + blockText : blockText
+      thinkingContent.set(chatId, accumulated)
+
+      // Serialize sends per chat so the first sendMessage resolves before the next block tries to edit
+      const prev = thinkingSendQueue.get(chatId) ?? Promise.resolve()
+      const next = prev.then(async () => {
+        // Re-read accumulated content (may have grown while we waited)
+        const current = thinkingContent.get(chatId) ?? accumulated
+        const htmlText = markdownToTelegramHTML(current)
+        const truncated = htmlText.length > 4096 ? htmlText.slice(0, 4093) + '...' : htmlText
+
         const ids = thinkingMessageIds.get(chatId) ?? []
-        ids.push(sent.message_id)
-        thinkingMessageIds.set(chatId, ids)
-        saveThinkingMessages()
-      }).catch(err => {
-        console.error(`telegram worker: failed to send thinking block: ${err}`)
-      })
+        const currentMsgId = ids.length > 0 ? ids[ids.length - 1] : null
+        const contentExceedsLimit = htmlText.length > 4096
+
+        if (currentMsgId && !contentExceedsLimit) {
+          try {
+            await enqueueApiCall(() => bot.api.editMessageText(chatId, currentMsgId, truncated, { parse_mode: 'HTML' }))
+          } catch (err) {
+            if (String(err).includes('message is not modified')) return
+
+            if (isMissingThinkingMessageError(err)) {
+              dropThinkingMessageId(chatId, currentMsgId)
+              const sent = await enqueueApiCall(() => bot.api.sendMessage(chatId, truncated, { parse_mode: 'HTML' })).catch(sendErr => {
+                console.error(`telegram worker: failed to recreate thinking block: ${sendErr}`)
+                return null
+              })
+              if (sent) {
+                const refreshedIds = thinkingMessageIds.get(chatId) ?? []
+                refreshedIds.push(sent.message_id)
+                thinkingMessageIds.set(chatId, refreshedIds)
+                saveThinkingMessages()
+              }
+            } else {
+              console.error(`telegram worker: failed to edit thinking block: ${err}`)
+            }
+          }
+        } else if (currentMsgId && contentExceedsLimit) {
+          thinkingContent.set(chatId, blockText)
+          const freshHtml = markdownToTelegramHTML(blockText)
+          const freshTruncated = freshHtml.length > 4096 ? freshHtml.slice(0, 4093) + '...' : freshHtml
+          const sent = await enqueueApiCall(() => bot.api.sendMessage(chatId, freshTruncated, { parse_mode: 'HTML' })).catch(err => {
+            console.error(`telegram worker: failed to send thinking block: ${err}`)
+            return null
+          })
+          if (sent) {
+            ids.push(sent.message_id)
+            thinkingMessageIds.set(chatId, ids)
+            saveThinkingMessages()
+          }
+        } else {
+          const sent = await enqueueApiCall(() => bot.api.sendMessage(chatId, truncated, { parse_mode: 'HTML' })).catch(err => {
+            console.error(`telegram worker: failed to send thinking block: ${err}`)
+            return null
+          })
+          if (sent) {
+            ids.push(sent.message_id)
+            thinkingMessageIds.set(chatId, ids)
+            saveThinkingMessages()
+          }
+        }
+      }).catch(() => {})
+      thinkingSendQueue.set(chatId, next)
       break
     }
 
@@ -789,7 +910,15 @@ function handleParentMessage(msg: IPCMessage): void {
         void enqueueApiCall(() => bot.api.deleteMessage(chatId, id)).catch(() => {})
       }
       thinkingMessageIds.delete(chatId)
+      thinkingContent.delete(chatId)
+      thinkingSendQueue.delete(chatId)
       saveThinkingMessages()
+      // Update /stop message to confirm process has been stopped
+      const stopMsgId = stopMessageIds.get(chatId)
+      if (stopMsgId) {
+        void enqueueApiCall(() => bot.api.editMessageText(chatId, stopMsgId, '⛔ Process has been stopped.')).catch(() => {})
+        stopMessageIds.delete(chatId)
+      }
       break
     }
 
@@ -819,7 +948,15 @@ function handleParentMessage(msg: IPCMessage): void {
       const info = AVAILABLE_MODELS.find(m => m.id === effective)
       const display = info ? `${effective} (${info.aliases.join(', ')})` : effective
       const suffix = model === 'default' ? ' [default]' : ''
-      void enqueueApiCall(() => bot.api.sendMessage(chatId, `Model: <code>${display}${suffix}</code>`, { parse_mode: 'HTML' })).catch(err => {
+      const lines = AVAILABLE_MODELS.map(m =>
+        `<code>${m.id}</code>${m.id === effective ? ' (current)' : ''}\n  aliases: ${m.aliases.join(', ')}\n  ${m.description}`
+      )
+      const text =
+        `Model: <code>${display}${suffix}</code>\n\n` +
+        `Choose a model with <code>/model &lt;alias-or-id&gt;</code>\n\n` +
+        `Available models:\n\n${lines.join('\n\n')}`
+      const replyMarkup = buildModelKeyboard(effective)
+      void enqueueApiCall(() => bot.api.sendMessage(chatId, text, { parse_mode: 'HTML', reply_markup: replyMarkup })).catch(err => {
         console.error(`telegram worker: failed to send model response: ${err}`)
       })
       break
@@ -978,13 +1115,30 @@ async function startBot(): Promise<void> {
     await ctx.reply(`Available models:\n\n${lines.join('\n\n')}`, { parse_mode: 'HTML' })
   })
 
+  bot.callbackQuery(/^model:(.+)$/, async ctx => {
+    const chatId = String(ctx.chat!.id)
+    const selectedModel = ctx.match[1]
+    const exists = AVAILABLE_MODELS.some(model => model.id === selectedModel)
+    if (!exists) {
+      await ctx.answerCallbackQuery({ text: 'Unknown model.', show_alert: false })
+      return
+    }
+
+    sendToParent({
+      type: 'session:setModel',
+      payload: { channelType: 'telegram', chatId, model: selectedModel },
+    })
+    await ctx.answerCallbackQuery({ text: `Switching to ${modelLabel(selectedModel)}.` })
+  })
+
   bot.command('stop', async ctx => {
     const chatId = String(ctx.chat!.id)
     sendToParent({
       type: 'session:interrupt',
       payload: { channelType: 'telegram', chatId },
     })
-    await ctx.reply('⛔ Stopping current process...')
+    const sent = await ctx.reply('⛔ Stopping current process...')
+    stopMessageIds.set(chatId, sent.message_id)
   })
 
   bot.command('interrupt', async ctx => {
@@ -993,7 +1147,8 @@ async function startBot(): Promise<void> {
       type: 'session:interrupt',
       payload: { channelType: 'telegram', chatId },
     })
-    await ctx.reply('⛔ Stopping current process...')
+    const sent = await ctx.reply('⛔ Stopping current process...')
+    stopMessageIds.set(chatId, sent.message_id)
   })
 
   bot.command('queue', async ctx => {

@@ -23,6 +23,18 @@ export function formatToolUse(name: string, input: Record<string, any> = {}): st
   let details = ''
 
   switch (name) {
+    case 'shell': {
+      description = input.description || 'Running command'
+      const cmd = input.command ?? ''
+      details = `$ ${cmd.length > 300 ? cmd.slice(0, 297) + '...' : cmd}`
+      break
+    }
+    case 'shell-result': {
+      description = input.description || 'Command output'
+      const output = input.output ?? ''
+      details = output.length > 500 ? output.slice(0, 497) + '...' : output
+      break
+    }
     case 'Bash': {
       description = input.description || 'Running command'
       const cmd = input.command ?? ''
