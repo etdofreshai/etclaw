@@ -33,14 +33,15 @@ export class ZaiProvider extends BaseProvider {
     }
 
     // Point the SDK at Z.AI's Anthropic-compatible endpoint
+    const zaiModel = options?.model || 'glm-5.1'
     queryOptions.env = {
       ...process.env,
       TELEGRAM_SUBSESSION: 'true',
       ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
       ANTHROPIC_API_KEY: zaiToken,
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-5.1',
-      ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-5.1',
-      ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-5.1',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: zaiModel,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: zaiModel,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: zaiModel,
     }
 
     for await (const msg of query({ prompt, options: queryOptions })) {

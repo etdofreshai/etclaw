@@ -345,6 +345,7 @@ export class TelegramChannel extends BaseChannel {
         sessionId: session?.sessionId,
         cwd: session?.cwd ?? this.config.projectDir,
         systemPrompt: this.config.soulPrompt,
+        model: session?.model,
       })) {
         if (msg.type === 'system' && msg.sessionId) {
           sessionId = msg.sessionId

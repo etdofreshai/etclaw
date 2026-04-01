@@ -23,6 +23,9 @@ export class ClaudeProvider extends BaseProvider {
     if (options?.systemPrompt) {
       queryOptions.systemPrompt = options.systemPrompt
     }
+    if (options?.model) {
+      queryOptions.model = options.model
+    }
 
     // Pass TELEGRAM_SUBSESSION=true so sub-sessions skip Telegram plugin init
     queryOptions.env = { ...process.env, TELEGRAM_SUBSESSION: 'true' }

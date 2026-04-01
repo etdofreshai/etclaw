@@ -229,7 +229,7 @@ try {
   // Not running from Docker build — that's fine
 }
 
-export function startAdminServer(options: AdminServerOptions): void {
+export function startAdminServer(options: AdminServerOptions, retries = 5): void {
   const { port, password, processManager, sessionManager, accessFilePath, globalEnv, defaultCwd, soulPrompt } = options
 
   // Load the HTML file once at startup
@@ -242,8 +242,11 @@ export function startAdminServer(options: AdminServerOptions): void {
     htmlContent = '<html><body><h1>Admin panel HTML not found</h1></body></html>'
   }
 
-  const server = Bun.serve({
+  let server: ReturnType<typeof Bun.serve>
+  try {
+    server = Bun.serve({
     port,
+    reusePort: true,
     async fetch(req: Request): Promise<Response> {
       const url = new URL(req.url)
       const path = url.pathname
@@ -357,13 +360,14 @@ export function startAdminServer(options: AdminServerOptions): void {
       }
 
       if (path === '/api/sessions/update' && method === 'POST') {
-        const body = await readBody<{ key: string; updates: { cwd?: string; provider?: string; env?: Record<string, string> } }>(req)
+        const body = await readBody<{ key: string; updates: { cwd?: string; provider?: string; model?: string; env?: Record<string, string> } }>(req)
         if (!body.key) return error('Missing key')
         const sessions = sessionManager.load()
         const entry = sessions[body.key]
         if (!entry) return error('Session not found', 404)
         if (body.updates.cwd !== undefined) entry.cwd = body.updates.cwd
         if (body.updates.provider !== undefined) entry.provider = body.updates.provider
+        if (body.updates.model !== undefined) entry.model = body.updates.model || undefined
         if (body.updates.env !== undefined) entry.env = body.updates.env
         const [channelType, chatId] = body.key.split(':')
         sessionManager.set(channelType, chatId, entry)
@@ -538,6 +542,15 @@ export function startAdminServer(options: AdminServerOptions): void {
       return error('Not found', 404)
     },
   })
+  } catch (err) {
+    if (retries > 0) {
+      console.error(`admin: port ${port} in use, retrying in 2s (${retries} retries left)`)
+      setTimeout(() => startAdminServer(options, retries - 1), 2000)
+      return
+    }
+    console.error(`admin: failed to start server after retries: ${err}`)
+    return
+  }
 
   console.error(`admin: panel running at http://localhost:${port}`)
   if (password) {

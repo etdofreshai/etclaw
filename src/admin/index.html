@@ -141,6 +141,27 @@ label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; 
 .form-row-inline { display: flex; gap: 0.75rem; align-items: end; }
 .form-row-inline .form-row { flex: 1; margin-bottom: 0; }
 
+/* ---- Model Selector ---- */
+.model-selector { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+.model-btn {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.4rem 0.8rem; border: 1px solid #0f3460; border-radius: 5px;
+  background: #1a1a2e; color: #e0e0e0; font-size: 0.8rem; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.model-btn:hover { background: #0f3460; border-color: #1a4a80; }
+.model-btn.active { background: #e94560; border-color: #e94560; color: #fff; }
+.model-btn .model-provider { font-size: 0.7rem; opacity: 0.7; }
+.model-selected {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 0.75rem; background: #16213e; border: 1px solid #0f3460;
+  border-radius: 5px; margin-bottom: 0.75rem; font-size: 0.85rem;
+}
+.model-selected .change-btn {
+  margin-left: auto; font-size: 0.75rem; color: #4ea8de; cursor: pointer;
+  background: none; border: none; text-decoration: underline;
+}
+
 /* ---- Stats ---- */
 .stats-grid {
   display: grid;
@@ -336,7 +357,7 @@ label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; 
       <div class="card">
         <h2>Sessions</h2>
         <table>
-          <thead><tr><th>Key</th><th>Name</th><th>Provider</th><th>CWD</th><th>Session ID</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Key</th><th>Name</th><th>Model</th><th>CWD</th><th>Session ID</th><th>Actions</th></tr></thead>
           <tbody id="sessions-table"></tbody>
         </table>
         <div id="sessions-empty" style="color:#888;text-align:center;padding:1.5rem;display:none">No sessions yet</div>
@@ -724,11 +745,12 @@ async function loadSessions() {
     tbody.innerHTML = keys.map(k => {
       const s = sessions[k];
       const sid = s.sessionId ? s.sessionId.slice(0, 12) + '...' : '-';
+      const modelDisplay = s.model ? getModelLabel(s.model) : `<span class="badge badge-provider-${esc(s.provider)}">${esc(s.provider)}</span>`;
       return `
         <tr>
           <td class="mono" style="font-size:0.8rem">${esc(k)}</td>
           <td>${esc(s.name || '-')}</td>
-          <td class="mono">${esc(s.provider)}</td>
+          <td>${modelDisplay}</td>
           <td class="mono" style="font-size:0.8rem">${esc(s.cwd || '-')}</td>
           <td class="mono" style="font-size:0.8rem" title="${esc(s.sessionId || '')}">${sid}</td>
           <td class="btn-group">
@@ -743,14 +765,55 @@ async function loadSessions() {
   }
 }
 
+// ---- Model definitions ----
+const MODELS = [
+  { id: 'claude-opus-4-6', provider: 'claude', label: 'Claude Opus 4.6', color: '#d4a574' },
+  { id: 'claude-sonnet-4-6', provider: 'claude', label: 'Claude Sonnet 4.6', color: '#d4a574' },
+  { id: 'claude-haiku-3-5', provider: 'claude', label: 'Claude Haiku 3.5', color: '#d4a574' },
+  { id: 'glm-5.1', provider: 'zai', label: 'GLM-5.1', color: '#7ee77e' },
+  { id: 'glm-4.6v', provider: 'zai', label: 'GLM-4.6V', color: '#7ee77e' },
+];
+
+function getModelLabel(modelId) {
+  const m = MODELS.find(x => x.id === modelId);
+  if (m) return `<span class="badge badge-provider-${esc(m.provider)}">${esc(m.label)}</span>`;
+  return `<span class="badge">${esc(modelId)}</span>`;
+}
+
+let _editOriginalProvider = '';
+
 async function editSession(key) {
   const sessions = await api('/api/sessions');
   const s = sessions[key];
   if (!s) { toast('Session not found', 'error'); return; }
 
+  _editOriginalProvider = s.provider || 'claude';
+  const currentModel = s.model || '';
+  const hasModel = !!currentModel;
+
+  const modelButtons = MODELS.map(m => {
+    const isActive = m.id === currentModel;
+    return `<button type="button" class="model-btn${isActive ? ' active' : ''}" data-model="${m.id}" data-provider="${m.provider}" onclick="selectModel(this)">
+      <span class="model-provider">${esc(m.provider)}</span> ${esc(m.label)}
+    </button>`;
+  }).join('');
+
   openModal(`
     <h2>Edit Session: ${esc(key)}</h2>
-    <div class="form-row"><label>Provider</label><input id="edit-provider" value="${escAttr(s.provider)}"></div>
+    <div id="model-section">
+      ${hasModel ? `
+        <div class="model-selected" id="model-active">
+          <span>${getModelLabel(currentModel)}</span>
+          <button class="change-btn" onclick="showModelSelector()">Change</button>
+        </div>
+        <div class="model-selector" id="model-buttons" style="display:none">${modelButtons}</div>
+      ` : `
+        <label>Model</label>
+        <div class="model-selector" id="model-buttons">${modelButtons}</div>
+      `}
+    </div>
+    <input type="hidden" id="edit-provider" value="${escAttr(s.provider || 'claude')}">
+    <input type="hidden" id="edit-model" value="${escAttr(currentModel)}">
     <div class="form-row"><label>CWD</label><input id="edit-cwd" value="${escAttr(s.cwd || '')}"></div>
     <div class="form-row"><label>Env (JSON)</label><textarea id="edit-env" rows="3">${esc(JSON.stringify(s.env || {}, null, 2))}</textarea></div>
     <div class="modal-actions">
@@ -760,14 +823,62 @@ async function editSession(key) {
   `);
 }
 
+function selectModel(btn) {
+  // Highlight active button
+  document.querySelectorAll('#model-buttons .model-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const modelId = btn.dataset.model;
+  const provider = btn.dataset.provider;
+  document.getElementById('edit-model').value = modelId;
+  document.getElementById('edit-provider').value = provider;
+
+  // Show selected state, hide buttons
+  const section = document.getElementById('model-section');
+  section.innerHTML = `
+    <div class="model-selected">
+      <span>${getModelLabel(modelId)}</span>
+      <button class="change-btn" onclick="showModelSelector()">Change</button>
+    </div>
+    <input type="hidden" id="edit-provider" value="${escAttr(provider)}">
+    <input type="hidden" id="edit-model" value="${escAttr(modelId)}">
+  `;
+}
+
+function showModelSelector() {
+  const currentModel = document.getElementById('edit-model')?.value || '';
+  const provider = document.getElementById('edit-provider')?.value || '';
+  const modelButtons = MODELS.map(m => {
+    const isActive = m.id === currentModel;
+    return `<button type="button" class="model-btn${isActive ? ' active' : ''}" data-model="${m.id}" data-provider="${m.provider}" onclick="selectModel(this)">
+      <span class="model-provider">${esc(m.provider)}</span> ${esc(m.label)}
+    </button>`;
+  }).join('');
+
+  const section = document.getElementById('model-section');
+  section.innerHTML = `
+    <label>Model</label>
+    <div class="model-selector" id="model-buttons">${modelButtons}</div>
+    <input type="hidden" id="edit-provider" value="${escAttr(provider)}">
+    <input type="hidden" id="edit-model" value="${escAttr(currentModel)}">
+  `;
+}
+
 async function saveSession(key) {
   try {
     const provider = document.getElementById('edit-provider').value.trim();
+    const model = document.getElementById('edit-model').value.trim();
     const cwd = document.getElementById('edit-cwd').value.trim();
     let env;
     try { env = JSON.parse(document.getElementById('edit-env').value); } catch { env = {}; }
-    await post('/api/sessions/update', { key, updates: { provider, cwd: cwd || undefined, env } });
-    toast('Session updated', 'success');
+
+    // If provider changed, reset the session (session IDs aren't valid across providers)
+    if (provider !== _editOriginalProvider) {
+      await post('/api/sessions/reset', { key });
+    }
+
+    await post('/api/sessions/update', { key, updates: { provider, model: model || undefined, cwd: cwd || undefined, env } });
+    toast('Session updated' + (provider !== _editOriginalProvider ? ' — session reset (provider changed)' : ''), 'success');
     closeModal();
     loadSessions();
   } catch (e) { toast(e.message, 'error'); }
